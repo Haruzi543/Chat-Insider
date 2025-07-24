@@ -84,6 +84,12 @@ export default function RoomPage() {
             socket.emit('send-answer', { roomCode, questionId, answer });
         }
     };
+    
+    const handleCorrectGuess = (messageId: string) => {
+        if (socket) {
+            socket.emit('correct-guess', { roomCode, messageId });
+        }
+    };
 
     const handleStartGame = (targetWord: string) => {
         if (socket && targetWord.trim()) {
@@ -152,6 +158,7 @@ export default function RoomPage() {
                         gameState={roomState.gameState}
                         onSendMessage={handleSendMessage}
                         onSendAnswer={handleSendAnswer}
+                        onCorrectGuess={handleCorrectGuess}
                     />
                 </main>
             </div>

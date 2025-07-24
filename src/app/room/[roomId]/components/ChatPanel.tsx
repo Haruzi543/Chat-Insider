@@ -6,7 +6,7 @@ import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send } from 'lucide-react';
+import { Send, Check } from 'lucide-react';
 import type { GameState, Message, Player } from '../types';
 
 interface ChatPanelProps {
@@ -16,9 +16,10 @@ interface ChatPanelProps {
   gameState: GameState;
   onSendMessage: (message: string) => void;
   onSendAnswer: (questionId: string, answer: string) => void;
+  onCorrectGuess: (messageId: string) => void;
 }
 
-export default function ChatPanel({ messages, myId, myRole, gameState, onSendMessage, onSendAnswer }: ChatPanelProps) {
+export default function ChatPanel({ messages, myId, myRole, gameState, onSendMessage, onSendAnswer, onCorrectGuess }: ChatPanelProps) {
   const [message, setMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -31,18 +32,28 @@ export default function ChatPanel({ messages, myId, myRole, gameState, onSendMes
   const handleAnswer = (questionId: string, answer: string) => {
     onSendAnswer(questionId, answer);
   };
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  
+  const isGuess = (text: string) => text.toLowerCase().startsWith('[guess]');
 
   const canBeAnswered = (msg: Message) => {
     const questioner = gameState.players?.find(p => p.id === msg.user.id);
     return gameState.isActive && 
            gameState.phase === 'questioning' &&
+           !isGuess(msg.text) &&
            (questioner?.role === 'Common' || questioner?.role === 'Insider') &&
-           !messages.some(m => m.questionId === msg.id); // Check if already answered
+           !messages.some(m => m.questionId === msg.id);
   };
+  
+  const canConfirmGuess = (msg: Message) => {
+      return myRole === 'Master' && 
+             gameState.isActive && 
+             gameState.phase === 'questioning' &&
+             isGuess(msg.text);
+  };
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
   
   return (
     <>
@@ -62,12 +73,19 @@ export default function ChatPanel({ messages, myId, myRole, gameState, onSendMes
                       <span>{format(new Date(msg.timestamp), 'p')}</span>
                     </div>
                     <p className={`text-sm break-words ${msg.type === 'game' ? 'italic text-accent-foreground/90' : ''}`}>{msg.text}</p>
+                    
                     {myRole === 'Master' && canBeAnswered(msg) && (
                       <div className="flex gap-2 mt-2">
                         <Button size="sm" variant="outline" onClick={() => handleAnswer(msg.id, 'Yes')}>Yes</Button>
                         <Button size="sm" variant="outline" onClick={() => handleAnswer(msg.id, 'No')}>No</Button>
                         <Button size="sm" variant="outline" onClick={() => handleAnswer(msg.id, 'I don\'t know')}>DK</Button>
                       </div>
+                    )}
+                    
+                    {canConfirmGuess(msg) && (
+                      <Button size="sm" variant="outline" className="mt-2 text-green-500 border-green-500 hover:bg-green-500/10 hover:text-green-600" onClick={() => onCorrectGuess(msg.id)}>
+                        <Check className="mr-2 h-4 w-4" /> Correct Guess
+                      </Button>
                     )}
                   </div>
                 </div>
@@ -79,7 +97,13 @@ export default function ChatPanel({ messages, myId, myRole, gameState, onSendMes
       </ScrollArea>
       <div className="p-4 border-t border-border bg-background/80 backdrop-blur-sm">
         <form onSubmit={handleSendMessage} className="flex gap-2">
-          <Input value={message} onChange={e => setMessage(e.target.value)} placeholder="Type a message or question..." maxLength={200} autoComplete="off" />
+          <Input 
+            value={message} 
+            onChange={e => setMessage(e.target.value)} 
+            placeholder={gameState.phase === 'questioning' ? "Type [guess] YourGuess to submit an answer" : "Type a message..."} 
+            maxLength={200} 
+            autoComplete="off" 
+          />
           <Button type="submit" size="icon" disabled={!message.trim()}>
             <Send className="h-4 w-4" />
           </Button>

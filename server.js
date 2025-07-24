@@ -185,26 +185,6 @@ app.prepare().then(() => {
           };
           room.messages.push(newMessage);
           io.to(roomCode).emit('new-message', newMessage);
-  
-          if (room.gameState.isActive && room.gameState.phase === 'questioning' && message.toLowerCase().startsWith('[guess]')) {
-              const guess = message.substring(7).trim();
-              if (guess.toLowerCase() === room.gameState.targetWord?.toLowerCase()) {
-                  if (roomTimers[roomCode]) {
-                      clearTimeout(roomTimers[roomCode]);
-                      delete roomTimers[roomCode];
-                  }
-                  room.gameState.phase = 'voting';
-                  room.gameState.timer = 60; // 1 minute for voting
-                  
-                  const systemMessageText = `The word was guessed correctly! It was "${room.gameState.targetWord}". Now, vote for the Insider!`;
-                  const systemMessage = { id: Date.now().toString(), user: { id: 'system', nickname: 'System' }, text: systemMessageText, timestamp: new Date().toISOString(), type: 'system' };
-                  room.messages.push(systemMessage);
-                  io.to(roomCode).emit('new-message', systemMessage);
-                  
-                  roomTimers[roomCode] = setTimeout(() => advanceGameState(io, roomCode), room.gameState.timer * 1000);
-                  io.to(roomCode).emit('game-update', room.gameState);
-              }
-          }
       });
       
       socket.on('send-answer', ({ roomCode, questionId, answer }) => {
@@ -214,7 +194,6 @@ app.prepare().then(() => {
         const master = room.gameState.players?.find(p => p.role === 'Master');
         if (!master || master.id !== socket.id) return;
         
-        // Prevent answering the same question twice
         if (room.messages.some(m => m.questionId === questionId)) return;
 
         const answerMessage = {
@@ -227,6 +206,39 @@ app.prepare().then(() => {
         };
         room.messages.push(answerMessage);
         io.to(roomCode).emit('new-message', answerMessage);
+      });
+
+      socket.on('correct-guess', ({ roomCode, messageId }) => {
+        const room = rooms[roomCode];
+        if (!room || !room.gameState.isActive || room.gameState.phase !== 'questioning') return;
+
+        const master = room.gameState.players?.find(p => p.role === 'Master');
+        if (!master || master.id !== socket.id) return;
+
+        const guessMessage = room.messages.find(m => m.id === messageId);
+        if (!guessMessage) return;
+
+        const guess = guessMessage.text.substring(7).trim();
+
+        if (guess.toLowerCase() === room.gameState.targetWord?.toLowerCase()) {
+            if (roomTimers[roomCode]) {
+                clearTimeout(roomTimers[roomCode]);
+                delete roomTimers[roomCode];
+            }
+            room.gameState.phase = 'voting';
+            room.gameState.timer = 60; // 1 minute for voting
+            
+            const systemMessageText = `The word was guessed correctly! It was "${room.gameState.targetWord}". Now, vote for the Insider!`;
+            const systemMessage = { id: Date.now().toString(), user: { id: 'system', nickname: 'System' }, text: systemMessageText, timestamp: new Date().toISOString(), type: 'system' };
+            room.messages.push(systemMessage);
+            io.to(roomCode).emit('new-message', systemMessage);
+            
+            roomTimers[roomCode] = setTimeout(() => advanceGameState(io, roomCode), room.gameState.timer * 1000);
+            io.to(roomCode).emit('game-update', room.gameState);
+        } else {
+            const wrongGuessMessage = { id: Date.now().toString(), user: { id: 'system', nickname: 'System' }, text: `The guess "${guess}" was incorrect.`, timestamp: new Date().toISOString(), type: 'system' };
+            io.to(master.id).emit('new-message', wrongGuessMessage);
+        }
       });
   
       socket.on('start-game', ({ roomCode, targetWord }) => {
