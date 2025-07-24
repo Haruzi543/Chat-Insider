@@ -181,7 +181,7 @@ app.prepare().then(() => {
               user,
               text: message.substring(0, 200),
               timestamp: new Date().toISOString(),
-              type: message.startsWith('[Question]') || message.startsWith('[Guess]') || message.startsWith('[Answer]') ? 'game' : 'user',
+              type: room.gameState.isActive && room.gameState.phase === 'questioning' ? 'game' : 'user',
           };
           room.messages.push(newMessage);
           io.to(roomCode).emit('new-message', newMessage);
@@ -205,6 +205,28 @@ app.prepare().then(() => {
                   io.to(roomCode).emit('game-update', room.gameState);
               }
           }
+      });
+      
+      socket.on('send-answer', ({ roomCode, questionId, answer }) => {
+        const room = rooms[roomCode];
+        if (!room || !room.gameState.isActive || room.gameState.phase !== 'questioning') return;
+
+        const master = room.gameState.players?.find(p => p.role === 'Master');
+        if (!master || master.id !== socket.id) return;
+        
+        // Prevent answering the same question twice
+        if (room.messages.some(m => m.questionId === questionId)) return;
+
+        const answerMessage = {
+            id: Date.now().toString(),
+            user: master,
+            text: answer,
+            timestamp: new Date().toISOString(),
+            type: 'answer',
+            questionId: questionId,
+        };
+        room.messages.push(answerMessage);
+        io.to(roomCode).emit('new-message', answerMessage);
       });
   
       socket.on('start-game', ({ roomCode, targetWord }) => {
@@ -303,7 +325,7 @@ app.prepare().then(() => {
                           room.messages.push(ownerMessage);
                       }
   
-                      if (room.gameState.isActive && (room.users.length < 4 || room.gameState.players?.some(p => p.id === user.id))) {
+                      if (room.gameState.isActive && (room.users.length < 4 || (room.gameState.players && !room.gameState.players.some(p => p.id === user.id)))) {
                            if (roomTimers[roomCode]) {
                               clearTimeout(roomTimers[roomCode]);
                               delete roomTimers[roomCode];
@@ -319,7 +341,10 @@ app.prepare().then(() => {
           }
       };
       
-      socket.on('leave-room', handleDisconnect);
+      socket.on('leave-room', () => {
+        handleDisconnect();
+        socket.disconnect(true);
+      });
       socket.on('disconnect', handleDisconnect);
   });
 

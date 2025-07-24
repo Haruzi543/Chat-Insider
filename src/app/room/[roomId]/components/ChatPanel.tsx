@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useRef, useEffect } from 'react';
@@ -6,15 +7,18 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Send } from 'lucide-react';
-import type { Message } from '../types';
+import type { GameState, Message, Player } from '../types';
 
 interface ChatPanelProps {
   messages: Message[];
   myId: string;
+  myRole: Player['role'];
+  gameState: GameState;
   onSendMessage: (message: string) => void;
+  onSendAnswer: (questionId: string, answer: string) => void;
 }
 
-export default function ChatPanel({ messages, myId, onSendMessage }: ChatPanelProps) {
+export default function ChatPanel({ messages, myId, myRole, gameState, onSendMessage, onSendAnswer }: ChatPanelProps) {
   const [message, setMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -24,10 +28,22 @@ export default function ChatPanel({ messages, myId, onSendMessage }: ChatPanelPr
     setMessage('');
   };
 
+  const handleAnswer = (questionId: string, answer: string) => {
+    onSendAnswer(questionId, answer);
+  };
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  const canBeAnswered = (msg: Message) => {
+    const questioner = gameState.players?.find(p => p.id === msg.user.id);
+    return gameState.isActive && 
+           gameState.phase === 'questioning' &&
+           (questioner?.role === 'Common' || questioner?.role === 'Insider') &&
+           !messages.some(m => m.questionId === msg.id); // Check if already answered
+  };
+  
   return (
     <>
       <ScrollArea className="flex-1 p-4">
@@ -46,6 +62,13 @@ export default function ChatPanel({ messages, myId, onSendMessage }: ChatPanelPr
                       <span>{format(new Date(msg.timestamp), 'p')}</span>
                     </div>
                     <p className={`text-sm break-words ${msg.type === 'game' ? 'italic text-accent-foreground/90' : ''}`}>{msg.text}</p>
+                    {myRole === 'Master' && canBeAnswered(msg) && (
+                      <div className="flex gap-2 mt-2">
+                        <Button size="sm" variant="outline" onClick={() => handleAnswer(msg.id, 'Yes')}>Yes</Button>
+                        <Button size="sm" variant="outline" onClick={() => handleAnswer(msg.id, 'No')}>No</Button>
+                        <Button size="sm" variant="outline" onClick={() => handleAnswer(msg.id, 'I don\'t know')}>DK</Button>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

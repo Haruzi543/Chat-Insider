@@ -1,3 +1,4 @@
+
 export interface User {
   id: string;
   nickname: string;
@@ -8,7 +9,8 @@ export interface Message {
   user: User;
   text: string;
   timestamp: string;
-  type: 'user' | 'system' | 'game';
+  type: 'user' | 'system' | 'game' | 'answer';
+  questionId?: string; // The ID of the message being answered
 }
 
 export type PlayerRole = 'Master' | 'Insider' | 'Common';

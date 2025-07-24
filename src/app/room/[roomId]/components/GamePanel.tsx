@@ -1,22 +1,24 @@
+
 "use client";
 
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Gamepad2 } from 'lucide-react';
-import type { GameState, User } from '../types';
+import { Gamepad2, Eye } from 'lucide-react';
+import type { GameState, User, Player } from '../types';
 
 interface GamePanelProps {
   gameState: GameState;
   isOwner: boolean;
   users: User[];
   myId: string;
+  myRole: Player['role'];
   onStartGame: (targetWord: string) => void;
   onSubmitVote: (voteForNickname: string) => void;
 }
 
-export default function GamePanel({ gameState, isOwner, users, myId, onStartGame, onSubmitVote }: GamePanelProps) {
+export default function GamePanel({ gameState, isOwner, users, myId, myRole, onStartGame, onSubmitVote }: GamePanelProps) {
   const [targetWord, setTargetWord] = useState('');
   const [gameTimer, setGameTimer] = useState(0);
 
@@ -64,10 +66,18 @@ export default function GamePanel({ gameState, isOwner, users, myId, onStartGame
         ) : (
           <div className="space-y-3 text-center">
             <h3 className="font-semibold text-primary">{gameState.phase.charAt(0).toUpperCase() + gameState.phase.slice(1)} Phase</h3>
+
+            {(myRole === 'Insider' || myRole === 'Master') && gameState.targetWord && (
+              <div className="p-2 bg-accent/20 rounded-lg text-sm">
+                <p className="flex items-center justify-center gap-2"><Eye className="w-4 h-4" /> The word is: <span className="font-bold">{gameState.targetWord}</span></p>
+              </div>
+            )}
+
             {(gameState.phase === 'questioning' || gameState.phase === 'voting') && gameState.timer !== undefined && (
               <div className="text-4xl font-bold font-mono">{formatTime(gameTimer)}</div>
             )}
-            {gameState.phase === 'questioning' && <p className="text-xs text-muted-foreground">Use [Question] or [Guess] to find the word.</p>}
+            {gameState.phase === 'questioning' && <p className="text-xs text-muted-foreground">Ask 'Yes' or 'No' questions to find the word.</p>}
+            
             {gameState.phase === 'voting' && !myVote && (
               <div className="space-y-2">
                 <p className="text-sm text-muted-foreground">Vote for the Insider.</p>
@@ -81,11 +91,12 @@ export default function GamePanel({ gameState, isOwner, users, myId, onStartGame
               </div>
             )}
             {gameState.phase === 'voting' && myVote && <p className="text-sm text-green-500">You have voted. Waiting for others...</p>}
+            
             {gameState.phase === 'results' && gameState.results && (
               <div className="p-3 bg-accent/20 rounded-lg">
-                <p className="font-bold">{gameState.results.wasWordGuessed && !gameState.results.wasInsiderFound ? "Insider Wins!" : "Commons Win!"}</p>
+                <p className="font-bold">{gameState.results.wasWordGuessed && !gameState.results.wasInsiderFound ? "Insider Wins!" : "Commons & Master Win!"}</p>
                 <p className="text-sm">The Insider was: <span className="font-bold text-primary">{gameState.results.insider}</span></p>
-                {!gameState.results.wasWordGuessed && <p className="text-sm">The word was not guessed.</p>}
+                {!gameState.results.wasWordGuessed && <p className="text-sm">The word <span className="font-bold text-primary">"{gameState.targetWord}"</span> was not guessed.</p>}
               </div>
             )}
           </div>
