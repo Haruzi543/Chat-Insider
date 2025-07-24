@@ -91,7 +91,7 @@ export default function HomePage() {
                   </Button>
                 </form>
               </CardContent>
-            </card>
+            </Card>
           </TabsContent>
         </Tabs>
       </div>
