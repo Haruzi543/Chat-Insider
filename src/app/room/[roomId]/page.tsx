@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -34,7 +35,13 @@ export default function RoomPage() {
             return;
         }
 
-        const newSocket = io({ path: "/api/socket_io", addTrailingSlash: false, transports: ['websocket'] });
+        // Ensure this runs only on the client-side
+        const socketUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
+        const newSocket = io(socketUrl, {
+            path: "/api/socket_io",
+            addTrailingSlash: false,
+        });
+
         setSocket(newSocket);
 
         newSocket.on('connect', () => {
