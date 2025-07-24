@@ -12,8 +12,8 @@ import { LogOut, Users } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 
 import type { RoomState as GenericRoomState } from './types';
-import type { RoomState as InsiderRoomState, GameState as InsiderGameState, Message as InsiderMessage, Player as InsiderPlayer } from './insider/types';
-import type { CoupRoomState, GameState as CoupGameState } from './coup/types';
+import type { InsiderRoomState, InsiderGameState, Message as InsiderMessage, Player as InsiderPlayer } from './insider/types';
+import type { CoupRoomState } from './coup/types';
 
 import UserListPanel from './components/UserListPanel';
 import GameControlPanel from './components/GameControlPanel';
@@ -175,6 +175,7 @@ export default function RoomPage() {
                     roomState={roomState as CoupRoomState}
                     isOwner={isOwner}
                     onLeaveRoom={handleLeaveRoom}
+                    onEndGame={handleEndGame}
                     onGameAction={handleCoupAction}
                     onPause={handlePauseGame}
                     onResume={handleResumeGame}

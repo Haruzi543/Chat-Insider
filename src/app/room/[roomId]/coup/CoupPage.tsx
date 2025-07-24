@@ -30,6 +30,7 @@ interface CoupPageProps {
   roomState: CoupRoomState;
   isOwner: boolean;
   onLeaveRoom: () => void;
+  onEndGame: () => void;
   onGameAction: (action: string, targetId?: string, extra?: any) => void;
   onPause: () => void;
   onResume: () => void;
@@ -43,7 +44,7 @@ const cardDetails = {
     'Ambassador': { description: 'Exchange cards with deck. Block stealing.', color: 'bg-green-600' },
 };
 
-export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onGameAction, onPause, onResume }: CoupPageProps) {
+export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEndGame, onGameAction, onPause, onResume }: CoupPageProps) {
     const gameState = roomState.coupGame;
     const me = gameState.players.find(p => p.id === socket.id);
     const otherPlayers = gameState.players.filter(p => p.id !== socket.id);
@@ -249,7 +250,7 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onGa
                         {gameState.paused ? (
                             <Button onClick={onResume} variant="outline" size="sm"><Play className="mr-2"/> Resume</Button>
                         ) : (
-                            <Button onClick={onPause} variant="outline" size="sm"><Pause className="mr-2"/> Pause</Button>
+                            <Button onClick={onPause} variant="outline" size="sm" disabled={gameState.phase === 'game-over'}><Pause className="mr-2"/> Pause</Button>
                         )}
                         </>
                     )}
@@ -263,6 +264,14 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onGa
                         <Pause className="w-16 h-16 text-white"/>
                         <h2 className="text-3xl font-bold text-white">Game Paused</h2>
                         {isOwner && <Button onClick={onResume}><Play className="mr-2"/>Resume Game</Button>}
+                    </div>
+                )}
+                 {gameState.phase === 'game-over' && (
+                    <div className="absolute inset-0 bg-black/80 z-20 flex flex-col items-center justify-center gap-4 rounded-lg">
+                        <Crown className="w-24 h-24 text-amber-400"/>
+                        <h2 className="text-4xl font-bold text-white">Game Over!</h2>
+                        <p className="text-2xl text-white">{gameState.winner} is the winner!</p>
+                        {isOwner && <Button onClick={onEndGame} className="mt-4">Play Again</Button>}
                     </div>
                 )}
                 {/* Players */}
@@ -291,7 +300,6 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onGa
                           <p>Turn: <span className="font-bold text-primary">{currentPlayer?.nickname ?? 'N/A'}</span></p>
                           <p>Phase: <span className="font-bold text-primary">{gameState.phase}</span></p>
                           <p>Treasury: <span className="font-bold text-yellow-400">{gameState.treasury} coins</span></p>
-                          {gameState.winner && <p className="font-bold text-2xl text-green-500">{gameState.winner} wins!</p>}
                        </CardContent>
                    </Card>
 
