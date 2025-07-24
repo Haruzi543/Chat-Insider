@@ -5,7 +5,7 @@ import { useState, useMemo } from 'react';
 import type { Socket } from 'socket.io-client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { User, Shield, Swords, DollarSign, Crown, Users, LogOut, VenetianMask, HelpCircle, Pause, Play } from 'lucide-react';
+import { User, Shield, Swords, DollarSign, Crown, Users, LogOut, VenetianMask, HelpCircle, Pause, Play, Gamepad2, Info } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 
 import type { RoomState } from '../types';
@@ -65,7 +66,7 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
         return player.influence.map((influence, index) => (
             <Card 
                 key={index} 
-                className={`w-20 h-28 flex flex-col items-center justify-center text-white transition-all ${influence.isRevealed ? (cardDetails[influence.card]?.color || 'bg-gray-500') + ' opacity-50' : 'bg-gray-500'}`}
+                className={`w-20 h-28 flex flex-col items-center justify-center text-white transition-all ${influence.isRevealed ? (cardDetails[influence.card]?.color || 'bg-gray-500') + ' opacity-50' : 'bg-zinc-600'}`}
             >
                 {influence.isRevealed || player.id === me?.id ? (
                     <>
@@ -73,14 +74,14 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
                         <span className="text-xs font-bold text-center">{influence.card}</span>
                     </>
                 ) : (
-                    <span className="text-lg font-bold">?</span>
+                    <span className="text-lg font-bold text-zinc-300">?</span>
                 )}
             </Card>
         ));
     };
 
     const renderPlayer = (player: Player, isMe: boolean) => (
-        <div key={player.id} className={`p-4 rounded-lg flex flex-col gap-2 relative border ${isMyTurn && player.id === me?.id ? 'border-primary' : ''} ${player.isEliminated ? 'opacity-40' : ''}`}>
+        <div key={player.id} className={`p-3 rounded-lg flex flex-col gap-2 relative border bg-card ${isMyTurn && player.id === me?.id ? 'border-primary shadow-lg' : 'border-border'} ${player.isEliminated ? 'opacity-40' : ''}`}>
              {player.id === gameState.currentPlayerId && <Crown className="absolute top-2 right-2 w-5 h-5 text-amber-400" />}
             <div className="flex items-center gap-2">
                 <User className="w-5 h-5" />
@@ -90,7 +91,7 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
                 <DollarSign className="w-4 h-4 text-yellow-500" />
                 <span>{player.coins} Coins</span>
             </div>
-            <div className="flex gap-2 mt-2">
+            <div className="flex gap-2 mt-1">
                 {renderInfluence(player)}
             </div>
              {player.isEliminated && <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-lg"><span className="text-white font-bold text-lg rotate-12">ELIMINATED</span></div>}
@@ -100,7 +101,6 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
     const handleActionWithTarget = (action: string, required: number) => {
         const targets = targetablePlayers;
         if (targets.length < required) {
-            // This case shouldn't happen with proper button disabling, but as a safeguard.
             return;
         }
         if (targets.length === 1 && required === 1) {
@@ -137,7 +137,7 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
                         <AlertDialogTitle>Action In Progress</AlertDialogTitle>
                         <AlertDialogDescription>{description}</AlertDialogDescription>
                     </AlertDialogHeader>
-                    <AlertDialogFooter>
+                    <AlertDialogFooter className="flex-row sm:flex-row justify-end gap-2">
                         {canChallenge && <Button variant="outline" onClick={() => onGameAction('challenge')}>Challenge</Button>}
                         {canBlock && blockCards?.map(card => <Button key={card} variant="secondary" onClick={() => onGameAction('block', undefined, { card })}>Block with {card}</Button>)}
                         <Button onClick={() => onGameAction('pass')}>Pass / Allow</Button>
@@ -164,8 +164,8 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
                         <AlertDialogTitle>Action Blocked!</AlertDialogTitle>
                         <AlertDialogDescription>{blocker.nickname} is claiming {gameState.action.blockClaimedCard} to block the action.</AlertDialogDescription>
                     </AlertDialogHeader>
-                    <AlertDialogFooter>
-                         {canChallenge ? <Button variant="destructive" onClick={() => onGameAction('challenge')}>Challenge the Block!</Button> : <p>Waiting for {actor.nickname} to respond...</p>}
+                    <AlertDialogFooter className="flex-row sm:flex-row justify-end gap-2">
+                         {canChallenge ? <Button variant="destructive" onClick={() => onGameAction('challenge')}>Challenge Block</Button> : <p className="text-sm text-muted-foreground">Waiting for {actor.nickname} to respond...</p>}
                          <Button onClick={() => onGameAction('pass')}>Accept Block</Button>
                     </AlertDialogFooter>
                 </AlertDialogContent>
@@ -220,7 +220,13 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
                                     id={`card-${idx}`}
                                     checked={exchangeSelection.includes(card)}
                                     onCheckedChange={(checked) => {
-                                        setExchangeSelection(prev => checked ? [...prev, card] : prev.filter(c => c !== card))
+                                        setExchangeSelection(prev => {
+                                          if (checked) {
+                                            return [...prev, card];
+                                          } else {
+                                            return prev.filter(c => c !== card);
+                                          }
+                                        });
                                     }}
                                 />
                                 <Label htmlFor={`card-${idx}`}>{card}</Label>
@@ -238,9 +244,53 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
         );
     };
 
+    const GameActionsPanel = () => (
+        <>
+            <Card>
+                <CardHeader className="p-4">
+                    <CardTitle className="text-lg">Game State</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2 p-4 pt-0">
+                    <p>Turn: <span className="font-bold text-primary">{currentPlayer?.nickname ?? 'N/A'}</span></p>
+                    <p>Phase: <span className="font-bold capitalize">{gameState.phase.replace('-', ' ')}</span></p>
+                    <p>Treasury: <span className="font-bold text-yellow-400">{gameState.treasury} coins</span></p>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader className="p-4">
+                    <CardTitle className="text-lg">Actions</CardTitle>
+                </CardHeader>
+                <CardContent className="grid grid-cols-2 gap-2 p-4 pt-0">
+                    <Button onClick={() => onGameAction('income')} disabled={!isMyTurn || gameState.phase !== 'turn' || mustCoup}>Income (+1)</Button>
+                    <Button onClick={() => onGameAction('foreign_aid')} disabled={!isMyTurn || gameState.phase !== 'turn' || mustCoup}>Foreign Aid (+2)</Button>
+                    <Button onClick={() => handleActionWithTarget('coup', 1)} disabled={!isMyTurn || gameState.phase !== 'turn' || (me?.coins ?? 0) < 7}>Coup (Cost 7)</Button>
+                    <Button onClick={() => onGameAction('tax')} disabled={!isMyTurn || gameState.phase !== 'turn' || mustCoup}>Tax (Duke)</Button>
+                    <Button onClick={() => handleActionWithTarget('assassinate', 1)} disabled={!isMyTurn || gameState.phase !== 'turn' || mustCoup || (me?.coins ?? 0) < 3}>Assassinate (Cost 3)</Button>
+                    <Button onClick={() => handleActionWithTarget('steal', 1)} disabled={!isMyTurn || gameState.phase !== 'turn' || mustCoup}>Steal (Captain)</Button>
+                    <Button onClick={() => onGameAction('exchange')} disabled={!isMyTurn || gameState.phase !== 'turn' || mustCoup}>Exchange (Amb.)</Button>
+                    {mustCoup && <p className="col-span-2 text-center text-destructive text-sm">You must Coup (10+ coins)</p>}
+                </CardContent>
+            </Card>
+
+            <Card className="flex-1">
+                <CardHeader className="p-4">
+                    <CardTitle className="text-lg">Game Log</CardTitle>
+                </CardHeader>
+                <CardContent className="p-4 pt-0">
+                    <ScrollArea className="h-48 md:h-64">
+                        <ul className="space-y-2 text-sm pr-2">
+                            {gameState.log.map(entry => <li key={entry.id}>{entry.message}</li>)}
+                        </ul>
+                    </ScrollArea>
+                </CardContent>
+            </Card>
+        </>
+    );
+
     return (
-        <div className="flex flex-col h-screen bg-background text-foreground p-4 gap-4">
-            <header className="flex justify-between items-center">
+        <div className="flex flex-col h-screen bg-zinc-900 text-foreground">
+            <header className="flex justify-between items-center p-4 border-b border-border">
                 <div className="flex items-center gap-4">
                     <h1 className="text-2xl font-bold text-primary">Coup</h1>
                 </div>
@@ -258,7 +308,7 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
                 </div>
             </header>
             
-            <main className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1 overflow-hidden relative">
+            <main className="flex-1 overflow-hidden">
                 {gameState.paused && (
                     <div className="absolute inset-0 bg-black/70 z-20 flex flex-col items-center justify-center gap-4">
                         <Pause className="w-16 h-16 text-white"/>
@@ -274,73 +324,56 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
                         {isOwner && <Button onClick={onEndGame} className="mt-4">Play Again</Button>}
                     </div>
                 )}
-                {/* Players */}
-                <div className="md:col-span-2 flex flex-col gap-4 overflow-y-auto pr-2">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2"><Users /> Opponents</CardTitle>
-                        </CardHeader>
-                        <CardContent className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                           {otherPlayers.map(p => renderPlayer(p, false))}
-                        </CardContent>
-                    </Card>
 
-                    {/* My Hand */}
-                    <div className="mt-auto sticky bottom-0 bg-background py-2">
-                        <h3 className="font-bold text-lg mb-2">My Hand</h3>
+                <Tabs defaultValue="board" className="w-full h-full flex flex-col md:hidden">
+                    <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="board">Board</TabsTrigger>
+                        <TabsTrigger value="actions">Log & Actions</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="board" className="flex-1 overflow-y-auto p-4 space-y-4">
+                        <Card>
+                            <CardHeader className="p-4">
+                                <CardTitle className="flex items-center gap-2"><Users /> Opponents</CardTitle>
+                            </CardHeader>
+                            <CardContent className="grid grid-cols-2 gap-4 p-4 pt-0">
+                               {otherPlayers.map(p => renderPlayer(p, false))}
+                            </CardContent>
+                        </Card>
                         {me && renderPlayer(me, true)}
+                    </TabsContent>
+                    <TabsContent value="actions" className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+                       <GameActionsPanel/>
+                    </TabsContent>
+                </Tabs>
+                
+                <div className="hidden md:grid md:grid-cols-3 gap-4 h-full p-4">
+                    <div className="md:col-span-2 flex flex-col gap-4 overflow-y-auto pr-2">
+                        <Card>
+                            <CardHeader className="p-4">
+                                <CardTitle className="flex items-center gap-2"><Users /> Opponents</CardTitle>
+                            </CardHeader>
+                            <CardContent className="grid grid-cols-1 lg:grid-cols-2 gap-4 p-4 pt-0">
+                               {otherPlayers.map(p => renderPlayer(p, false))}
+                            </CardContent>
+                        </Card>
+                        {me && <div className="mt-auto sticky bottom-0 bg-zinc-900 py-2">{renderPlayer(me, true)}</div>}
                     </div>
-                </div>
 
-                {/* Game Info & Actions */}
-                <div className="flex flex-col gap-4">
-                   <Card>
-                       <CardHeader><CardTitle>Game State</CardTitle></CardHeader>
-                       <CardContent className="space-y-2">
-                          <p>Turn: <span className="font-bold text-primary">{currentPlayer?.nickname ?? 'N/A'}</span></p>
-                          <p>Phase: <span className="font-bold text-primary">{gameState.phase}</span></p>
-                          <p>Treasury: <span className="font-bold text-yellow-400">{gameState.treasury} coins</span></p>
-                       </CardContent>
-                   </Card>
-
-                   <Card>
-                       <CardHeader><CardTitle>Actions</CardTitle></CardHeader>
-                       <CardContent className="grid grid-cols-2 gap-2">
-                           <Button onClick={() => onGameAction('income')} disabled={!isMyTurn || gameState.phase !== 'turn' || mustCoup}>Income (+1)</Button>
-                           <Button onClick={() => onGameAction('foreign_aid')} disabled={!isMyTurn || gameState.phase !== 'turn' || mustCoup}>Foreign Aid (+2)</Button>
-                           <Button onClick={() => handleActionWithTarget('coup', 1)} disabled={!isMyTurn || gameState.phase !== 'turn' || (me?.coins ?? 0) < 7}>Coup (Cost 7)</Button>
-                           <Button onClick={() => onGameAction('tax')} disabled={!isMyTurn || gameState.phase !== 'turn' || mustCoup}>Tax (Duke)</Button>
-                           <Button onClick={() => handleActionWithTarget('assassinate', 1)} disabled={!isMyTurn || gameState.phase !== 'turn' || mustCoup || (me?.coins ?? 0) < 3}>Assassinate (Cost 3)</Button>
-                           <Button onClick={() => handleActionWithTarget('steal', 1)} disabled={!isMyTurn || gameState.phase !== 'turn' || mustCoup}>Steal (Captain)</Button>
-                           <Button onClick={() => onGameAction('exchange')} disabled={!isMyTurn || gameState.phase !== 'turn' || mustCoup}>Exchange (Ambassador)</Button>
-                           {mustCoup && <p className="col-span-2 text-center text-destructive text-sm">You must Coup (10+ coins)</p>}
-                       </CardContent>
-                   </Card>
-
-                    <Card className="flex-1">
-                        <CardHeader><CardTitle>Game Log</CardTitle></CardHeader>
-                        <CardContent>
-                            <ScrollArea className="h-64">
-                                <ul className="space-y-2 text-sm pr-2">
-                                    {gameState.log.map(entry => <li key={entry.id}>{entry.message}</li>)}
-                                </ul>
-                            </ScrollArea>
-                        </CardContent>
-                    </Card>
+                    <div className="flex flex-col gap-4 overflow-y-auto">
+                        <GameActionsPanel/>
+                    </div>
                 </div>
             </main>
 
-            {/* Dialogs for game flow */}
             {renderActionResponseDialog()}
             {renderBlockResponseDialog()}
             {renderRevealDialog()}
             {renderExchangeDialog()}
 
-            {/* Target Selection Dialog */}
             <AlertDialog open={!!targetSelection} onOpenChange={() => setTargetSelection(null)}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Select a Target for {targetSelection?.action}</AlertDialogTitle>
+                        <AlertDialogTitle>Select a Target for {targetSelection?.action.replace('_', ' ')}</AlertDialogTitle>
                     </AlertDialogHeader>
                     <div className="flex flex-col gap-2">
                         {targetablePlayers.map(p => (
@@ -355,3 +388,6 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
         </div>
     );
 }
+
+
+    
