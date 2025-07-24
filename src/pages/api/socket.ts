@@ -55,7 +55,7 @@ const advanceGameState = (roomCode: string, io: SocketIOServer) => {
         room.gameState.phase = 'results';
         room.gameState.results = {
             insider: insider?.nickname || 'Unknown',
-            wasInsiderFound: false, // Not found since word wasn't guessed
+            wasInsiderFound: false,
             wasWordGuessed: false,
         };
         const resultText = `Time's up! The word was not guessed. The Insider (${insider?.nickname}) wins! The word was "${room.gameState.targetWord}".`;
@@ -138,30 +138,28 @@ const socketHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
 
   io.on('connection', (socket: Socket) => {
     socket.on('join-room', ({ roomCode, nickname }, callback) => {
-        const lowerCaseNickname = nickname.toLowerCase();
         let room = rooms[roomCode];
+        const lowerCaseNickname = nickname.toLowerCase();
 
+        // SCENARIO 1: Room does not exist, so we create it.
         if (!room) {
-            // SCENARIO 1: Room does not exist, create it.
             const owner = { id: socket.id, nickname };
             room = {
                 id: roomCode,
-                owner: owner,
+                owner,
                 users: [owner],
-                messages: [],
+                messages: [{
+                    id: Date.now().toString(),
+                    user: { id: 'system', nickname: 'System' },
+                    text: `${nickname} created and joined the room.`,
+                    timestamp: new Date().toISOString(),
+                    type: 'system',
+                }],
                 gameState: { isActive: false, phase: 'setup' },
             };
             rooms[roomCode] = room;
-            const systemMessage: Message = {
-                id: Date.now().toString(),
-                user: { id: 'system', nickname: 'System' },
-                text: `${nickname} created and joined the room.`,
-                timestamp: new Date().toISOString(),
-                type: 'system',
-            };
-            room.messages.push(systemMessage);
         } else {
-            // SCENARIO 2: Room exists. Handle join or rejoin.
+        // SCENARIO 2: Room exists. Handle join or rejoin.
             const userInRoom = room.users.find(u => u.id === socket.id);
             const isNicknameTaken = room.users.some(u => u.id !== socket.id && u.nickname.toLowerCase() === lowerCaseNickname);
 
@@ -170,25 +168,24 @@ const socketHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
             }
 
             if (userInRoom) {
-                // User is REJOINING
+                // User is rejoining, potentially with a new nickname.
                 if (userInRoom.nickname.toLowerCase() !== lowerCaseNickname) {
                     const oldNickname = userInRoom.nickname;
                     userInRoom.nickname = nickname;
-                     if (room.owner.id === socket.id) {
+                    if (room.owner.id === socket.id) {
                         room.owner.nickname = nickname;
                     }
                     const systemMessage: Message = {
                         id: Date.now().toString(),
                         user: { id: 'system', nickname: 'System' },
                         text: `${oldNickname} is now known as ${nickname}.`,
-                        timestamp: new
-Date().toISOString(),
+                        timestamp: new Date().toISOString(),
                         type: 'system',
                     };
                     room.messages.push(systemMessage);
                 }
             } else {
-                // User is JOINING for the first time
+                // New user is joining the room.
                 const newUser = { id: socket.id, nickname };
                 room.users.push(newUser);
                 const systemMessage: Message = {
