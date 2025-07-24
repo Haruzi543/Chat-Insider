@@ -242,9 +242,9 @@ class CoupGame {
               this.addLog(`${challengedPlayer.nickname} reveals a ${action.blockClaimedCard}! ${challenger.nickname} loses the challenge.`);
               this.returnCardToDeck(challengedPlayer, action.blockClaimedCard);
               this.drawCard(challengedPlayer);
-              this.state.revealChoice = { playerId: challenger.id, reason: 'lost-challenge' };
               // The original action is successfully blocked
               this.state.action = null; 
+              this.state.revealChoice = { playerId: challenger.id, reason: 'lost-challenge' };
           } else {
               this.addLog(`${challengedPlayer.nickname} does not have a ${action.blockClaimedCard}! The block fails.`);
               this.state.revealChoice = { playerId: challengedPlayer.id, reason: 'lost-challenge' };
@@ -281,25 +281,29 @@ class CoupGame {
       this.state.revealChoice = { playerId: null, reason: null };
       
       if (wasEliminated) {
+        // If the current player eliminated themselves, move to next turn
+        if (player.id === this.state.currentPlayerId) {
+            this.nextTurn();
+            return;
+        }
         if(this.checkForWinner()) return;
       }
-      
+
       const wasActionChallenge = this.state.challengerId && !this.state.blockerId;
       const wasBlockChallenge = this.state.challengerId && this.state.blockerId;
-      const challengedPlayer = this.getPlayer(this.state.action.playerId);
       
       // Determine next step
       if (wasActionChallenge) {
-          const challengeLoser = this.getPlayer(playerId);
+          const actionClaimant = this.getPlayer(this.state.action.playerId);
           // If challenger lost, the original action proceeds
-          if (challengeLoser.id === this.state.challengerId) {
+          if (player.id === this.state.challengerId) {
               this.resolveAction();
-          } else { // If action claimant lost, action is void, next turn
+          } else { // If action claimant lost challenge (was bluffing), action is void, next turn
               this.nextTurn();
           }
       } else if (wasBlockChallenge) {
           const blocker = this.getPlayer(this.state.blockerId);
-          // If blocker lost the challenge, the action proceeds
+          // If blocker lost the challenge (was bluffing), the action proceeds
           if (blocker.id === playerId) {
               this.resolveAction();
           } else { // If challenger of block lost, action is blocked, next turn
@@ -534,3 +538,4 @@ class CoupGame {
 }
 
 module.exports = { CoupGame };
+ 
