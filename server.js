@@ -1,3 +1,4 @@
+
 const { createServer } = require('http');
 const { Server } = require('socket.io');
 const next = require('next');
@@ -298,7 +299,7 @@ app.prepare().then(() => {
                   } else {
                       if (room.owner.id === user.id) {
                           room.owner = room.users[0];
-                          const ownerMessage = { id: Date.now().toString(), user: { id: 'system', nickname: 'System' }, text: `${room.owner.nickname} is the new room owner.`, timestamp: new D ate().toISOString(), type: 'system' };
+                          const ownerMessage = { id: Date.now().toString(), user: { id: 'system', nickname: 'System' }, text: `${room.owner.nickname} is the new room owner.`, timestamp: new Date().toISOString(), type: 'system' };
                           room.messages.push(ownerMessage);
                       }
   
