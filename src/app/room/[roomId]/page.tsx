@@ -120,6 +120,9 @@ function RoomPageContent() {
     const handleInsiderCorrectGuess = (messageId: string) => {
         if (socket) socket.emit('insider-correct-guess', { roomCode, messageId });
     };
+    const handleInsiderIncorrectGuess = (messageId: string) => {
+        if (socket) socket.emit('insider-incorrect-guess', { roomCode, messageId });
+    };
     const handleInsiderStartGame = (targetWord: string) => { // This is for the game panel within Insider
         if (socket && targetWord.trim()) {
             socket.emit('insider-start-game-params', { roomCode, targetWord });
@@ -173,6 +176,7 @@ function RoomPageContent() {
                     onStartGame={handleInsiderStartGame}
                     onSendAnswer={handleInsiderSendAnswer}
                     onCorrectGuess={handleInsiderCorrectGuess}
+                    onIncorrectGuess={handleInsiderIncorrectGuess}
                     onSubmitVote={handleInsiderSubmitVote}
                     onPause={handlePauseGame}
                     onResume={handleResumeGame}

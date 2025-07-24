@@ -25,6 +25,7 @@ interface InsiderPageProps {
     onStartGame: (targetWord: string) => void;
     onSendAnswer: (questionId: string, answer: string) => void;
     onCorrectGuess: (messageId: string) => void;
+    onIncorrectGuess: (messageId: string) => void;
     onSubmitVote: (voteForNickname: string) => void;
     onPause: () => void;
     onResume: () => void;
@@ -32,7 +33,7 @@ interface InsiderPageProps {
 
 export default function InsiderPage({ 
     socket, roomState, isOwner, myRole, roleInfo, setRoleInfo, 
-    onLeaveRoom, onSendMessage, onStartGame, onSendAnswer, onCorrectGuess, onSubmitVote,
+    onLeaveRoom, onSendMessage, onStartGame, onSendAnswer, onCorrectGuess, onIncorrectGuess, onSubmitVote,
     onPause, onResume
 }: InsiderPageProps) {
     const { insiderGame } = roomState;
@@ -95,6 +96,7 @@ export default function InsiderPage({
                     onSendMessage={onSendMessage}
                     onSendAnswer={onSendAnswer}
                     onCorrectGuess={onCorrectGuess}
+                    onIncorrectGuess={onIncorrectGuess}
                 />
             </main>
         </div>

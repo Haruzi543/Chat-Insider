@@ -6,7 +6,7 @@ import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send, Check } from 'lucide-react';
+import { Send, Check, X } from 'lucide-react';
 import type { InsiderGameState, Message, Player } from '../insider/types';
 
 interface ChatPanelProps {
@@ -17,9 +17,10 @@ interface ChatPanelProps {
   onSendMessage: (message: string) => void;
   onSendAnswer?: (questionId: string, answer: string) => void;
   onCorrectGuess?: (messageId: string) => void;
+  onIncorrectGuess?: (messageId: string) => void;
 }
 
-export default function ChatPanel({ messages, myId, myRole, gameState, onSendMessage, onSendAnswer, onCorrectGuess }: ChatPanelProps) {
+export default function ChatPanel({ messages, myId, myRole, gameState, onSendMessage, onSendAnswer, onCorrectGuess, onIncorrectGuess }: ChatPanelProps) {
   const [message, setMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -86,10 +87,19 @@ export default function ChatPanel({ messages, myId, myRole, gameState, onSendMes
                       </div>
                     )}
                     
-                    {onCorrectGuess && canConfirmGuess(msg) && (
-                      <Button size="sm" variant="outline" className="mt-2 text-green-500 border-green-500 hover:bg-green-500/10 hover:text-green-600" onClick={() => onCorrectGuess(msg.id)}>
-                        <Check className="mr-2 h-4 w-4" /> Correct Guess
-                      </Button>
+                    {canConfirmGuess(msg) && (
+                     <div className="flex gap-2 mt-2">
+                        {onCorrectGuess && (
+                           <Button size="sm" variant="outline" className="text-green-500 border-green-500 hover:bg-green-500/10 hover:text-green-600" onClick={() => onCorrectGuess(msg.id)}>
+                             <Check className="mr-2 h-4 w-4" /> Correct
+                           </Button>
+                        )}
+                        {onIncorrectGuess && (
+                            <Button size="sm" variant="outline" className="text-red-500 border-red-500 hover:bg-red-500/10 hover:text-red-600" onClick={() => onIncorrectGuess(msg.id)}>
+                                <X className="mr-2 h-4 w-4" /> Incorrect
+                            </Button>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>

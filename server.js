@@ -352,9 +352,44 @@ app.prepare().then(() => {
             roomTimers[roomCode] = setTimeout(() => advanceInsiderGameState(io, roomCode), room.insiderGame.timer * 1000);
             io.to(roomCode).emit('room-state', getSanitizedRoom(room));
         } else {
-            const wrongGuessMessage = { id: Date.now().toString(), user: { id: 'system', nickname: 'System' }, text: `The guess "${guess}" was incorrect.`, timestamp: new Date().toISOString(), type: 'system' };
-            io.to(master.id).emit('new-message', wrongGuessMessage);
+            // This case should be handled by insider-incorrect-guess now
         }
+      });
+      
+      socket.on('insider-incorrect-guess', ({ roomCode, messageId }) => {
+        const room = getRoom(roomCode);
+        if (!room || room.activeGame !== 'insider' || !room.insiderGame.isActive || room.insiderGame.phase !== 'questioning' || room.insiderGame.paused) return;
+
+        const master = room.insiderGame.players?.find(p => p.role === 'Master');
+        if (!master || master.id !== socket.id) return;
+
+        const guessMessage = room.messages.find(m => m.id === messageId);
+        if (!guessMessage) return;
+
+        if (roomTimers[roomCode]) {
+            clearTimeout(roomTimers[roomCode]);
+            delete roomTimers[roomCode];
+        }
+
+        const insider = room.insiderGame.players?.find((p) => p.role === 'Insider');
+        room.insiderGame.phase = 'results';
+        room.insiderGame.results = {
+            insider: insider?.nickname || 'Unknown',
+            wasInsiderFound: false,
+            wasWordGuessed: false,
+        };
+        const resultText = `The guess was incorrect! The Insider (${insider?.nickname}) wins! The word was "${room.insiderGame.targetWord}".`;
+
+        const systemMessage = { 
+            id: Date.now().toString(), 
+            user: { id: 'system', nickname: 'System' }, 
+            text: resultText, 
+            timestamp: new Date().toISOString(), 
+            type: 'system' 
+        };
+        room.messages.push(systemMessage);
+        io.to(roomCode).emit('new-message', systemMessage);
+        io.to(roomCode).emit('room-state', getSanitizedRoom(room));
       });
   
       socket.on('insider-start-game-params', ({ roomCode, targetWord }) => {
