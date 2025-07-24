@@ -2,7 +2,7 @@
 const { createServer } = require('http');
 const { Server } = require('socket.io');
 const next = require('next');
-const CoupGame = require('./src/server/coup');
+const CoupGame = require('./src/server/coup').CoupGame;
 
 const dev = process.env.NODE_ENV !== 'production';
 const app = next({ dev });
@@ -145,7 +145,7 @@ app.prepare().then(() => {
                 messages: [],
                 activeGame: 'none',
                 insiderGame: { ...initialInsiderState },
-                coupGame: new CoupGame.CoupGame(), // Instance of the class
+                coupGame: new CoupGame(), // Instance of the class
             };
             rooms[roomCode] = room;
         }
@@ -231,7 +231,7 @@ app.prepare().then(() => {
         const endedGame = room.activeGame;
         room.activeGame = 'none';
         room.insiderGame = { ...initialInsiderState }; // Reset insider state
-        room.coupGame = new CoupGame.CoupGame(); // Reset coup state
+        room.coupGame = new CoupGame(); // Reset coup state
 
         const systemMessage = { id: Date.now().toString(), user: { id: 'system', nickname: 'System' }, text: `The ${endedGame} game has ended.`, timestamp: new Date().toISOString(), type: 'system' };
         room.messages.push(systemMessage);

@@ -24,7 +24,7 @@ class CoupGame {
         deck: [],
         treasury: 50,
         currentPlayerId: null,
-        action: null, // { type, playerId, targetId, isChallengeable, isBlockable, claimedCard, blockClaimedCard }
+        action: null, // { type, playerId, targetId, isChallengeable, isBlockable, claimedCard, blockClaimedCard, blockableBy[] }
         challengerId: null,
         blockerId: null,
         revealChoice: {
@@ -121,6 +121,9 @@ class CoupGame {
       if (player.isEliminated || (target && target.isEliminated)) {
           throw new Error("Player or target is eliminated.");
       }
+      if (player.coins >= 10 && actionType !== 'coup') {
+          throw new Error("You must launch a Coup with 10 or more coins.");
+      }
 
       this.state.action = {
           type: actionType,
@@ -129,11 +132,10 @@ class CoupGame {
           isChallengeable: false,
           isBlockable: false,
           claimedCard: null,
-          blockClaimedCard: null
+          blockClaimedCard: null,
+          blockableBy: [],
       };
       
-      let canProceed = true;
-
       switch(actionType) {
           case 'income':
               this.addLog(`${player.nickname} takes Income.`);
@@ -192,6 +194,7 @@ class CoupGame {
       
       const { action } = this.state;
       const challenger = this.getPlayer(challengerId);
+      this.state.challengerId = challengerId;
       
       if (this.state.phase === 'action-response') {
           // Challenging the initial action
@@ -254,25 +257,36 @@ class CoupGame {
       influence.isRevealed = true;
       this.addLog(`${player.nickname} reveals a ${influence.card}.`);
 
-      this.checkIfEliminated(player);
+      const wasEliminated = this.checkIfEliminated(player);
       this.state.revealChoice = { playerId: null, reason: null };
-
-      // After reveal, determine next step
-      if (player.isEliminated) {
-        this.checkForWinner();
-        if(this.state.winner) {
-            this.state.phase = 'game-over';
-            return;
-        }
+      
+      if (wasEliminated) {
+        if(this.checkForWinner()) return;
       }
-
-      // If the reveal was from a failed block challenge, the action now goes through
-      if (this.state.blockerId && this.getPlayer(this.state.blockerId).id === playerId && this.state.action) {
-          this.resolveAction();
-      } else if (this.state.action) { // Challenge on action was won by challenger, action failed.
+      
+      const wasActionChallenge = this.state.challengerId && !this.state.blockerId;
+      const wasBlockChallenge = this.state.challengerId && this.state.blockerId;
+      const challengedPlayer = this.getPlayer(this.state.action.playerId);
+      
+      // Determine next step
+      if (wasActionChallenge) {
+          const challengeLoser = this.getPlayer(playerId);
+          // If challenger lost, the original action proceeds
+          if (challengeLoser.id === this.state.challengerId) {
+              this.resolveAction();
+          } else { // If action claimant lost, action is void, next turn
+              this.nextTurn();
+          }
+      } else if (wasBlockChallenge) {
+          const blocker = this.getPlayer(this.state.blockerId);
+          // If blocker lost the challenge, the action proceeds
+          if (blocker.id === playerId) {
+              this.resolveAction();
+          } else { // If challenger of block lost, action is blocked, next turn
+              this.nextTurn();
+          }
+      } else { // No challenge, this reveal was from a Coup or Assassination
           this.nextTurn();
-      } else { // Challenge on action was lost by challenger, action proceeds. Or challenge on block was won by challenger.
-          this.resolveAction();
       }
   }
 
@@ -281,10 +295,21 @@ class CoupGame {
 
     const { exchangeInfo } = this.state;
     const player = this.getPlayer(playerId);
+    const influenceCount = player.influence.filter(i => !i.isRevealed).length;
+    if (cardsToKeep.length !== influenceCount) throw new Error(`You must keep ${influenceCount} card(s).`);
+
+    const tempDeck = [...exchangeInfo.cards];
+    const newInfluence = [];
     
-    const cardsToReturn = exchangeInfo.cards.filter(c => !cardsToKeep.includes(c));
-    player.influence = cardsToKeep.map(card => ({ card, isRevealed: false }));
-    this.state.deck.push(...cardsToReturn);
+    cardsToKeep.forEach(card => {
+        const index = tempDeck.indexOf(card);
+        if (index > -1) {
+            newInfluence.push({ card: tempDeck.splice(index, 1)[0], isRevealed: false });
+        }
+    });
+
+    player.influence = [...player.influence.filter(i => i.isRevealed), ...newInfluence];
+    this.state.deck.push(...tempDeck);
     this.state.deck = shuffle(this.state.deck);
 
     this.addLog(`${player.nickname} finishes exchanging cards.`);
@@ -294,11 +319,10 @@ class CoupGame {
 
 
   pass(playerId) {
-      // Called when a player chooses not to challenge or block
+      if (this.state.phase !== 'action-response' && this.state.phase !== 'block-response') return;
+      // This is a simplification. In a real game, we need to track who has passed.
+      // For now, we assume if one person passes, everyone does.
       if (this.state.phase === 'action-response') {
-        const activePlayers = this.state.players.filter(p => !p.isEliminated && p.id !== this.state.action.playerId);
-        // This is a simplification. In a real game, we need to track who has passed.
-        // For now, we assume if one person passes, everyone does.
         this.addLog("No challenges or blocks. The action proceeds.");
         this.resolveAction();
       } else if (this.state.phase === 'block-response') {
@@ -328,8 +352,13 @@ class CoupGame {
               this.resolveTax(player);
               break;
           case 'assassinate':
-              this.addLog(`${player.nickname}'s assassination is successful.`);
-              this.resolveAssassinate(player, target);
+              if (target.isEliminated) {
+                this.addLog(`${target.nickname} was already eliminated. The assassination has no effect.`);
+                this.nextTurn();
+              } else {
+                this.addLog(`${player.nickname}'s assassination is successful.`);
+                this.resolveAssassinate(player, target);
+              }
               break;
           case 'steal':
               this.addLog(`${player.nickname}'s steal is successful.`);
@@ -354,6 +383,7 @@ class CoupGame {
           const removedCard = player.influence.splice(influenceIndex, 1)[0];
           this.state.deck.push(removedCard.card);
           this.state.deck = shuffle(this.state.deck);
+          this.addLog(`${player.nickname} shuffles a ${card} back into the deck.`);
       }
   }
 
@@ -361,6 +391,9 @@ class CoupGame {
       if(this.state.deck.length > 0) {
           const newCard = this.state.deck.pop();
           player.influence.push({ card: newCard, isRevealed: false });
+          this.addLog(`${player.nickname} draws a new card.`);
+      } else {
+        this.addLog(`The deck is empty. ${player.nickname} cannot draw a new card.`)
       }
   }
 
@@ -372,7 +405,9 @@ class CoupGame {
           // Return coins to treasury
           this.state.treasury += player.coins;
           player.coins = 0;
+          return true;
       }
+      return false;
   }
 
   checkForWinner() {
@@ -390,7 +425,13 @@ class CoupGame {
     if (this.checkForWinner()) return;
 
     const activePlayers = this.state.players.filter(p => !p.isEliminated);
-    const currentIndex = activePlayers.findIndex(p => p.id === this.state.currentPlayerId);
+    if(activePlayers.length === 0) {
+        this.state.phase = 'game-over';
+        this.addLog('Game over. No players left.');
+        return;
+    }
+
+    const currentIndex = this.state.currentPlayerId ? activePlayers.findIndex(p => p.id === this.state.currentPlayerId) : -1;
     const nextPlayer = activePlayers[(currentIndex + 1) % activePlayers.length];
 
     this.state.currentPlayerId = nextPlayer.id;
@@ -417,6 +458,7 @@ class CoupGame {
   
   resolveCoup(player, target) {
       player.coins -= 7;
+      this.state.treasury += 7;
       this.addLog(`${player.nickname} pays 7 coins for the Coup.`);
       this.state.phase = 'reveal';
       this.state.revealChoice = { playerId: target.id, reason: 'coup' };
@@ -438,6 +480,7 @@ class CoupGame {
 
   resolveAssassinate(player, target) {
       player.coins -= 3;
+      this.state.treasury += 3;
       this.addLog(`${player.nickname} pays 3 coins to assassinate.`);
       this.state.phase = 'reveal';
       this.state.revealChoice = { playerId: target.id, reason: 'assassinated' };
@@ -453,6 +496,12 @@ class CoupGame {
 
   resolveExchange(player) {
       const drawnCards = [this.state.deck.pop(), this.state.deck.pop()].filter(Boolean);
+      if (drawnCards.length === 0) {
+          this.addLog('Deck is empty, cannot exchange.');
+          this.nextTurn();
+          return;
+      }
+
       this.addLog(`${player.nickname} draws ${drawnCards.length} card(s) from the deck.`);
       const currentInfluence = player.influence.filter(i => !i.isRevealed).map(i => i.card);
       

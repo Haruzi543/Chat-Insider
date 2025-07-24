@@ -21,13 +21,13 @@ import { Label } from "@/components/ui/label"
 
 
 import type { RoomState } from '../types';
-import type { Player } from './types';
+import type { Player, CoupRoomState } from './types';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface CoupPageProps {
   socket: Socket;
   roomCode: string;
-  roomState: RoomState;
+  roomState: CoupRoomState;
   isOwner: boolean;
   onLeaveRoom: () => void;
   onGameAction: (action: string, targetId?: string, extra?: any) => void;

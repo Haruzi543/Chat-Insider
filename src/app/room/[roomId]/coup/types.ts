@@ -21,10 +21,10 @@ export interface Action {
     isBlockable: boolean;
     claimedCard: CardName | null;
     blockClaimedCard: CardName | null;
-    blockableBy?: CardName[];
+    blockableBy: CardName[];
 }
 
-export interface GameState {
+export interface CoupGameState {
     phase: GamePhase;
     players: Player[];
     deck: CardName[];
@@ -49,8 +49,10 @@ export interface CoupRoomState {
   id: string;
   owner: User;
   users: User[];
-  gameType: 'coup';
-  gameState: GameState;
+  activeGame: 'coup';
+  coupGame: CoupGameState;
+  messages: any[]; // Assuming messages can be generic for now
+  insiderGame: any; // Placeholder
 }
 
     

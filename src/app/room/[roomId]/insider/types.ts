@@ -20,7 +20,7 @@ export interface Player extends User {
   role: PlayerRole | null;
 }
 
-export interface GameState {
+export interface InsiderGameState {
   isActive: boolean;
   phase: 'setup' | 'questioning' | 'voting' | 'results';
   targetWord?: string;
@@ -34,12 +34,14 @@ export interface GameState {
   };
 }
 
-export interface RoomState {
+export interface InsiderRoomState {
   id: string;
   owner: User;
   users: User[];
   messages: Message[];
-  gameType: 'insider';
-  gameState: GameState;
+  activeGame: 'insider';
+  insiderGame: InsiderGameState;
+  coupGame: any; // Placeholder
 }
 
+    

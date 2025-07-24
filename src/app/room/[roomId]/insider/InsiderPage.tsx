@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { LogOut } from 'lucide-react';
 import type { Socket } from 'socket.io-client';
 
-import type { RoomState } from '../types';
+import type { InsiderRoomState } from './types';
 import type { Player } from './types';
 import UserListPanel from '../components/UserListPanel';
 import GamePanel from '../components/GamePanel';
@@ -15,7 +15,7 @@ import MobileHeader from '../components/MobileHeader';
 
 interface InsiderPageProps {
     socket: Socket;
-    roomState: RoomState;
+    roomState: InsiderRoomState;
     isOwner: boolean;
     myRole: Player['role'] | null;
     roleInfo: { role: string; message: string } | null;
@@ -71,3 +71,5 @@ export default function InsiderPage({
         </div>
     );
 }
+
+    
