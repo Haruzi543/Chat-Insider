@@ -45,6 +45,7 @@ export interface CoupGameState {
     log: { id: string, message: string }[];
     paused: boolean;
     pausedState: GamePhase | null;
+    respondedPlayerIds: string[];
 }
 
 export interface CoupRoomState {

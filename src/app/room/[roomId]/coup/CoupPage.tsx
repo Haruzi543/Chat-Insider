@@ -21,8 +21,7 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 
-import type { RoomState } from '../types';
-import type { Player, CoupRoomState, CoupGameState } from './types';
+import type { CoupRoomState, CoupGameState, Player } from './types';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface CoupPageProps {
@@ -111,15 +110,16 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
     };
 
     const renderActionResponseDialog = () => {
-        if (!gameState.action || gameState.phase !== 'action-response') return null;
+        if (!gameState.action || gameState.phase !== 'action-response' || !me) return null;
 
         const { action } = gameState;
         const actor = gameState.players.find(p => p.id === action.playerId);
         const target = action.targetId ? gameState.players.find(p => p.id === action.targetId) : null;
         if (!actor) return null;
 
-        const isMyAction = actor.id === me?.id;
-        const amITarget = target?.id === me?.id;
+        const isMyAction = actor.id === me.id;
+        const amITarget = target?.id === me.id;
+        const haveIResponded = gameState.respondedPlayerIds?.includes(me.id);
         
         let description = `${actor.nickname} is attempting to use ${action.type}`;
         if (action.claimedCard) description += ` (claiming ${action.claimedCard})`;
@@ -129,6 +129,8 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
         const canChallenge = !isMyAction && action.isChallengeable;
         const canBlock = amITarget && action.isBlockable;
         const blockCards = action.isBlockable ? action.blockableBy : [];
+        
+        const myTurnToRespond = !isMyAction && !haveIResponded;
 
         return (
             <AlertDialog open={true}>
@@ -138,9 +140,16 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
                         <AlertDialogDescription>{description}</AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter className="flex-row sm:flex-row justify-end gap-2">
-                        {canChallenge && <Button variant="outline" onClick={() => onGameAction('challenge')}>Challenge</Button>}
-                        {canBlock && blockCards?.map(card => <Button key={card} variant="secondary" onClick={() => onGameAction('block', undefined, { card })}>Block with {card}</Button>)}
-                        <Button onClick={() => onGameAction('pass')}>Pass / Allow</Button>
+                        {isMyAction && <p className="text-sm text-muted-foreground">Waiting for other players to respond...</p>}
+                        {myTurnToRespond ? (
+                             <>
+                                {canChallenge && <Button variant="outline" onClick={() => onGameAction('challenge')}>Challenge</Button>}
+                                {canBlock && blockCards?.map(card => <Button key={card} variant="secondary" onClick={() => onGameAction('block', undefined, { card })}>Block with {card}</Button>)}
+                                <Button onClick={() => onGameAction('pass')}>Pass</Button>
+                            </>
+                        ) : !isMyAction && (
+                            <p className="text-sm text-muted-foreground">You have passed. Waiting for others...</p>
+                        )}
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
@@ -148,14 +157,14 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
     };
 
     const renderBlockResponseDialog = () => {
-        if (!gameState.action || gameState.phase !== 'block-response') return null;
+        if (!gameState.action || gameState.phase !== 'block-response' || !me) return null;
         
         const blocker = gameState.players.find(p => p.id === gameState.blockerId);
         const actor = gameState.players.find(p => p.id === gameState.action.playerId);
         if (!blocker || !actor) return null;
 
-        const amIActor = actor.id === me?.id;
-        const canChallenge = amIActor;
+        const amIActor = actor.id === me.id;
+        const haveIResponded = gameState.respondedPlayerIds?.includes(me.id);
         
         return (
             <AlertDialog open={true}>
@@ -165,8 +174,14 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
                         <AlertDialogDescription>{blocker.nickname} is claiming {gameState.action.blockClaimedCard} to block the action.</AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter className="flex-row sm:flex-row justify-end gap-2">
-                         {canChallenge ? <Button variant="destructive" onClick={() => onGameAction('challenge')}>Challenge Block</Button> : <p className="text-sm text-muted-foreground">Waiting for {actor.nickname} to respond...</p>}
-                         <Button onClick={() => onGameAction('pass')}>Accept Block</Button>
+                         {amIActor && !haveIResponded ? (
+                            <>
+                                <Button variant="destructive" onClick={() => onGameAction('challenge')}>Challenge Block</Button>
+                                <Button onClick={() => onGameAction('pass')}>Accept Block</Button>
+                            </>
+                         ) : (
+                            <p className="text-sm text-muted-foreground">Waiting for {actor.nickname} to respond...</p>
+                         )}
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
@@ -222,7 +237,10 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
                                     onCheckedChange={(checked) => {
                                         setExchangeSelection(prev => {
                                           if (checked) {
-                                            return [...prev, card];
+                                            if (prev.length < myInfluenceCount) {
+                                                return [...prev, card];
+                                            }
+                                            return prev;
                                           } else {
                                             return prev.filter(c => c !== card);
                                           }
@@ -316,7 +334,7 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
                         {isOwner && <Button onClick={onResume}><Play className="mr-2"/>Resume Game</Button>}
                     </div>
                 )}
-                 {gameState.phase === 'game-over' && (
+                 {gameState.phase === 'game-over' && gameState.winner && (
                     <div className="absolute inset-0 bg-black/80 z-20 flex flex-col items-center justify-center gap-4 rounded-lg">
                         <Crown className="w-24 h-24 text-amber-400"/>
                         <h2 className="text-4xl font-bold text-white">Game Over!</h2>
@@ -335,7 +353,7 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
                             <CardHeader className="p-4">
                                 <CardTitle className="flex items-center gap-2"><Users /> Opponents</CardTitle>
                             </CardHeader>
-                            <CardContent className="grid grid-cols-2 gap-4 p-4 pt-0">
+                            <CardContent className="grid grid-cols-1 gap-4 p-4 pt-0">
                                {otherPlayers.map(p => renderPlayer(p, false))}
                             </CardContent>
                         </Card>
@@ -388,6 +406,3 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
         </div>
     );
 }
-
-
-    

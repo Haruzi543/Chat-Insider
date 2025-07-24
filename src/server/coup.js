@@ -36,6 +36,7 @@ class CoupGame {
         log: [],
         paused: false,
         pausedState: null,
+        respondedPlayerIds: [],
       }
   }
 
@@ -75,18 +76,25 @@ class CoupGame {
     const playerIndex = this.state.players.findIndex(p => p.id === id);
     if (playerIndex === -1) return;
     const player = this.state.players[playerIndex];
-    if (player.isEliminated) return;
-
+    
+    // Prevent modifying eliminated player
+    const wasAlreadyEliminated = player.isEliminated;
     player.isEliminated = true;
-    this.addLog(`${player.nickname} was eliminated or left.`);
+
+    if (!wasAlreadyEliminated) {
+        this.addLog(`${player.nickname} was eliminated or left.`);
+        player.influence.forEach(inf => {
+            if (!inf.isRevealed) this.state.deck.push(inf.card);
+        });
+        this.state.deck = shuffle(this.state.deck);
+    }
     
-    player.influence.forEach(inf => {
-        if (!inf.isRevealed) this.state.deck.push(inf.card);
-    });
-    this.state.deck = shuffle(this.state.deck);
-    
+    // If the disconnected player was the one to act, advance turn
     if (this.state.currentPlayerId === id) {
         this.nextTurn();
+    } else {
+        // If they were supposed to respond, treat it as a pass
+        this.pass(id);
     }
     
     this.checkForWinner();
@@ -170,6 +178,7 @@ class CoupGame {
           case 'coup':
               if (player.coins < 7) throw new Error("Not enough coins for a Coup.");
               if (!target) throw new Error("Coup requires a target.");
+              if (target.isEliminated) throw new Error("Target is already eliminated.");
               this.addLog(`${player.nickname} launches a Coup against ${target.nickname}.`);
               this.resolveCoup(player, target);
               break;
@@ -182,6 +191,7 @@ class CoupGame {
           case 'assassinate':
               if (player.coins < 3) throw new Error("Not enough coins to Assassinate.");
               if (!target) throw new Error("Assassination requires a target.");
+              if (target.isEliminated) throw new Error("Target is already eliminated.");
               this.state.action.isChallengeable = true;
               this.state.action.claimedCard = 'Assassin';
               this.state.action.isBlockable = true;
@@ -191,6 +201,7 @@ class CoupGame {
               break;
           case 'steal':
               if (!target) throw new Error("Steal requires a target.");
+              if (target.isEliminated) throw new Error("Target is already eliminated.");
               this.state.action.isChallengeable = true;
               this.state.action.claimedCard = 'Captain';
               this.state.action.isBlockable = true;
@@ -219,6 +230,8 @@ class CoupGame {
       if (this.state.phase === 'action-response') {
           // Challenging the initial action
           const challengedPlayer = this.getPlayer(action.playerId);
+          if(challenger.id === challengedPlayer.id) throw new Error("You cannot challenge yourself.");
+
           this.addLog(`${challenger.nickname} challenges ${challengedPlayer.nickname}'s claim of ${action.claimedCard}.`);
           const hasCard = this.playerHasCard(challengedPlayer, action.claimedCard);
 
@@ -229,12 +242,21 @@ class CoupGame {
               this.state.revealChoice = { playerId: challenger.id, reason: 'lost-challenge' };
           } else {
               this.addLog(`${challengedPlayer.nickname} does not have a ${action.claimedCard}! The challenge is successful.`);
+              const revealedInfluence = challengedPlayer.influence.find(inf => !inf.isRevealed);
+              if(revealedInfluence) {
+                revealedInfluence.isRevealed = true;
+                this.addLog(`${challengedPlayer.nickname} loses an influence, revealing a ${revealedInfluence.card}.`);
+                this.checkIfEliminated(challengedPlayer);
+              }
               this.state.action = null; // action fails
-              this.state.revealChoice = { playerId: challengedPlayer.id, reason: 'lost-challenge' };
+              this.nextTurn();
+              return;
           }
       } else { // 'block-response'
           // Challenging a block
           const challengedPlayer = this.getPlayer(this.state.blockerId);
+          if (challenger.id !== action.playerId) throw new Error("Only the player being blocked can challenge the block.");
+
           this.addLog(`${challenger.nickname} challenges ${challengedPlayer.nickname}'s block claim of ${action.blockClaimedCard}.`);
           const hasCard = this.playerHasCard(challengedPlayer, action.blockClaimedCard);
 
@@ -247,8 +269,8 @@ class CoupGame {
               this.state.revealChoice = { playerId: challenger.id, reason: 'lost-challenge' };
           } else {
               this.addLog(`${challengedPlayer.nickname} does not have a ${action.blockClaimedCard}! The block fails.`);
-              this.state.revealChoice = { playerId: challengedPlayer.id, reason: 'lost-challenge' };
               // The action will proceed after the reveal
+              this.state.revealChoice = { playerId: challengedPlayer.id, reason: 'lost-challenge' };
           }
       }
 
@@ -259,10 +281,12 @@ class CoupGame {
       if (this.state.paused || this.state.phase !== 'action-response') throw new Error("Not a valid time to block.");
       const { action } = this.state;
       if (!action.isBlockable || !action.blockableBy.includes(card)) throw new Error("This action cannot be blocked with that card.");
+      if (action.targetId !== blockerId) throw new Error("You are not the target of this action.");
 
       const blocker = this.getPlayer(blockerId);
       this.addLog(`${blocker.nickname} claims ${card} to block the action.`);
       this.state.blockerId = blockerId;
+      this.state.respondedPlayerIds = [];
       this.state.action.blockClaimedCard = card;
       this.state.phase = 'block-response';
   }
@@ -281,12 +305,12 @@ class CoupGame {
       this.state.revealChoice = { playerId: null, reason: null };
       
       if (wasEliminated) {
+        if(this.checkForWinner()) return;
         // If the current player eliminated themselves, move to next turn
         if (player.id === this.state.currentPlayerId) {
             this.nextTurn();
             return;
         }
-        if(this.checkForWinner()) return;
       }
 
       const wasActionChallenge = this.state.challengerId && !this.state.blockerId;
@@ -294,7 +318,6 @@ class CoupGame {
       
       // Determine next step
       if (wasActionChallenge) {
-          const actionClaimant = this.getPlayer(this.state.action.playerId);
           // If challenger lost, the original action proceeds
           if (player.id === this.state.challengerId) {
               this.resolveAction();
@@ -344,15 +367,37 @@ class CoupGame {
 
   pass(playerId) {
       if (this.state.paused || (this.state.phase !== 'action-response' && this.state.phase !== 'block-response')) return;
-      // This is a simplification. In a real game, we need to track who has passed.
-      // For now, we assume if one person passes, everyone does.
+
+      const player = this.getPlayer(playerId);
+      if (!player || player.isEliminated || this.state.respondedPlayerIds.includes(playerId)) {
+          return; // Don't allow passing twice or if eliminated
+      }
+
+      this.state.respondedPlayerIds.push(playerId);
+      this.addLog(`${player.nickname} passes.`);
+
+      const activePlayers = this.state.players.filter(p => !p.isEliminated);
+      let playersWhoNeedToRespond;
+
       if (this.state.phase === 'action-response') {
-        this.addLog("No challenges or blocks. The action proceeds.");
-        this.resolveAction();
-      } else if (this.state.phase === 'block-response') {
-        this.addLog(`${this.getPlayer(this.state.action.playerId).nickname} does not challenge the block.`);
-        this.state.action = null; // Action is blocked
-        this.nextTurn();
+          // Everyone except the current player needs to respond
+          playersWhoNeedToRespond = activePlayers.filter(p => p.id !== this.state.currentPlayerId);
+      } else { // block-response
+          // Only the current player needs to respond to the block
+          playersWhoNeedToRespond = activePlayers.filter(p => p.id === this.state.currentPlayerId);
+      }
+
+      const allResponded = playersWhoNeedToRespond.every(p => this.state.respondedPlayerIds.includes(p.id));
+
+      if (allResponded) {
+          if (this.state.phase === 'action-response') {
+              this.addLog("No challenges or blocks. The action proceeds.");
+              this.resolveAction();
+          } else if (this.state.phase === 'block-response') {
+              this.addLog(`${this.getPlayer(this.state.action.playerId).nickname} does not challenge the block.`);
+              this.state.action = null; // Action is blocked
+              this.nextTurn();
+          }
       }
   }
 
@@ -424,11 +469,13 @@ class CoupGame {
 
   checkIfEliminated(player) {
       if (player.influence.every(i => i.isRevealed)) {
-          player.isEliminated = true;
-          this.addLog(`${player.nickname} has been eliminated from the game.`);
-          // Return coins to treasury
-          this.state.treasury += player.coins;
-          player.coins = 0;
+          if (!player.isEliminated) {
+             player.isEliminated = true;
+             this.addLog(`${player.nickname} has been eliminated from the game.`);
+             // Return coins to treasury
+             this.state.treasury += player.coins;
+             player.coins = 0;
+          }
           return true;
       }
       return false;
@@ -463,6 +510,7 @@ class CoupGame {
     this.state.action = null;
     this.state.challengerId = null;
     this.state.blockerId = null;
+    this.state.respondedPlayerIds = [];
 
     const nextPlayerObj = this.getPlayer(nextPlayer.id);
     this.addLog(`It's now ${nextPlayerObj.nickname}'s turn.`);
@@ -520,13 +568,13 @@ class CoupGame {
 
   resolveExchange(player) {
       const drawnCards = [this.state.deck.pop(), this.state.deck.pop()].filter(Boolean);
-      if (drawnCards.length === 0) {
-          this.addLog('Deck is empty, cannot exchange.');
+      if (this.state.deck.length < 2) {
+          this.addLog('Not enough cards in deck to exchange.');
           this.nextTurn();
           return;
       }
 
-      this.addLog(`${player.nickname} draws ${drawnCards.length} card(s) from the deck.`);
+      this.addLog(`${player.nickname} draws 2 cards from the deck.`);
       const currentInfluence = player.influence.filter(i => !i.isRevealed).map(i => i.card);
       
       this.state.phase = 'exchange';
@@ -538,4 +586,3 @@ class CoupGame {
 }
 
 module.exports = { CoupGame };
- 
