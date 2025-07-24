@@ -28,7 +28,7 @@ export default function GamePanel({ gameState, isOwner, users, myId, onStartGame
       }, 1000);
       return () => clearInterval(interval);
     }
-  }, [gameState.isActive, gameState.timer]);
+  }, [gameState.isActive, gameState.timer, gameState.phase]);
 
   const formatTime = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
@@ -64,7 +64,7 @@ export default function GamePanel({ gameState, isOwner, users, myId, onStartGame
         ) : (
           <div className="space-y-3 text-center">
             <h3 className="font-semibold text-primary">{gameState.phase.charAt(0).toUpperCase() + gameState.phase.slice(1)} Phase</h3>
-            {(gameState.phase === 'questioning' || gameState.phase === 'voting') && (
+            {(gameState.phase === 'questioning' || gameState.phase === 'voting') && gameState.timer !== undefined && (
               <div className="text-4xl font-bold font-mono">{formatTime(gameTimer)}</div>
             )}
             {gameState.phase === 'questioning' && <p className="text-xs text-muted-foreground">Use [Question] or [Guess] to find the word.</p>}
@@ -83,8 +83,9 @@ export default function GamePanel({ gameState, isOwner, users, myId, onStartGame
             {gameState.phase === 'voting' && myVote && <p className="text-sm text-green-500">You have voted. Waiting for others...</p>}
             {gameState.phase === 'results' && gameState.results && (
               <div className="p-3 bg-accent/20 rounded-lg">
-                <p className="font-bold">{gameState.results.wasInsiderFound ? "Commons Win!" : "Insider Wins!"}</p>
+                <p className="font-bold">{gameState.results.wasWordGuessed && !gameState.results.wasInsiderFound ? "Insider Wins!" : "Commons Win!"}</p>
                 <p className="text-sm">The Insider was: <span className="font-bold text-primary">{gameState.results.insider}</span></p>
+                {!gameState.results.wasWordGuessed && <p className="text-sm">The word was not guessed.</p>}
               </div>
             )}
           </div>

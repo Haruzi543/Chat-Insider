@@ -124,12 +124,12 @@ const socketHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
             if (guess === room.gameState.targetWord?.toLowerCase()) {
                 room.gameState.phase = 'voting';
                 room.gameState.timer = 60;
-                io.to(roomCode).emit('game-update', room.gameState);
                 
                 const systemMessageText = `The word was guessed correctly! It was "${room.gameState.targetWord}". Now, vote for the Insider!`;
                 const systemMessage: Message = { id: Date.now().toString(), user: { id: 'system', nickname: 'System' }, text: systemMessageText, timestamp: new Date().toISOString(), type: 'system' };
                 room.messages.push(systemMessage);
                 io.to(roomCode).emit('new-message', systemMessage);
+                io.to(roomCode).emit('game-update', room.gameState);
             }
         }
     });
@@ -189,13 +189,14 @@ const socketHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
                 const insider = room.gameState.players?.find((p) => p.role === 'Insider');
                 
                 room.gameState.phase = 'results';
+                const wasInsiderFound = insider?.nickname === mostVotedNickname;
                 room.gameState.results = {
                     insider: insider?.nickname || 'Unknown',
-                    wasInsiderFound: insider?.nickname === mostVotedNickname,
+                    wasInsiderFound: wasInsiderFound,
                     wasWordGuessed: true,
                 };
 
-                const resultText = room.gameState.results.wasInsiderFound ? `The Insider was ${insider?.nickname}! Commons and Master win!` : `The Insider escaped! It was ${insider?.nickname}. The Insider wins!`;
+                const resultText = wasInsiderFound ? `The Insider was ${insider?.nickname}! Commons and Master win!` : `The Insider escaped! It was ${insider?.nickname}. The Insider wins!`;
                 const systemMessage: Message = { id: Date.now().toString(), user: { id: 'system', nickname: 'System' }, text: resultText, timestamp: new Date().toISOString(), type: 'system' };
                 room.messages.push(systemMessage);
                 io.to(roomCode).emit('new-message', systemMessage);
@@ -220,6 +221,13 @@ const socketHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
                      }
                     const systemMessage: Message = { id: Date.now().toString(), user: { id: 'system', nickname: 'System' }, text: `${user.nickname} has left the room.`, timestamp: new Date().toISOString(), type: 'system' };
                     room.messages.push(systemMessage);
+
+                    if (room.gameState.isActive && room.users.length < 4) {
+                        room.gameState = { isActive: false, phase: 'setup' };
+                        const resetMessage: Message = { id: Date.now().toString(), user: { id: 'system', nickname: 'System' }, text: 'Game reset due to insufficient players.', timestamp: new Date().toISOString(), type: 'system' };
+                        room.messages.push(resetMessage);
+                    }
+
                     io.to(roomCode).emit('room-state', room);
                 }
                 break;
