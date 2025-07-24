@@ -39,7 +39,6 @@ export default function RoomPage() {
         const socketUrl = window.location.origin;
         const newSocket = io(socketUrl, {
             path: "/api/socket_io",
-            addTrailingSlash: false,
         });
 
         setSocket(newSocket);

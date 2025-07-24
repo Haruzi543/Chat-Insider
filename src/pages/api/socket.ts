@@ -149,10 +149,8 @@ const socketHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
 
   const io = new SocketIOServer(res.socket.server, {
     path: "/api/socket_io",
-    addTrailingSlash: false,
     cors: {
-      origin: "https://chat-insider-g4b1.onrender.com",
-      methods: ["GET", "POST"]
+      origin: "*",
     }
   });
   res.socket.server.io = io;
