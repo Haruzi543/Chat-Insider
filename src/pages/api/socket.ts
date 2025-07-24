@@ -27,7 +27,7 @@ interface GameState {
   targetWord?: string;
   players?: Player[];
   timer?: number;
-  votes?: Record<string, string>;
+  votes?: Record<string, string>; // voterId -> votedForNickname
   results?: {
     insider: string;
     wasInsiderFound: boolean;
@@ -99,7 +99,7 @@ const assignRoles = (playersList: string[], roomOwnerNickname: string) => {
     if (playersList.length < 4) {
       throw new Error('The game requires at least 4 players.');
     }
-    const roles: Record<string, string> = {};
+    const roles: Record<string, PlayerRole> = {};
     roles[roomOwnerNickname] = 'Master';
 
     const otherPlayers = playersList.filter(p => p !== roomOwnerNickname);
@@ -140,7 +140,45 @@ const socketHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
     socket.on('join-room', ({ roomCode, nickname }, callback) => {
         let room = rooms[roomCode];
         
-        if (!room) {
+        if (room) {
+            // Room exists, handle joining
+            if (room.users.some(user => user.nickname.toLowerCase() === nickname.toLowerCase() && user.id !== socket.id)) {
+                return callback({ error: 'Nickname is already taken.' });
+            }
+
+            const userInRoom = room.users.find(u => u.id === socket.id);
+            if (userInRoom) {
+                // User is rejoining or changing nickname
+                const oldNickname = userInRoom.nickname;
+                if(oldNickname.toLowerCase() !== nickname.toLowerCase()){
+                  userInRoom.nickname = nickname;
+                  if (room.owner.id === socket.id) {
+                      room.owner.nickname = nickname;
+                  }
+                  const systemMessage: Message = {
+                      id: Date.now().toString(),
+                      user: { id: 'system', nickname: 'System' },
+                      text: `${oldNickname} is now known as ${nickname}.`,
+                      timestamp: new Date().toISOString(),
+                      type: 'system',
+                  };
+                  room.messages.push(systemMessage);
+                }
+            } else {
+                // New user joins an existing room
+                const newUser = { id: socket.id, nickname };
+                room.users.push(newUser);
+                const systemMessage: Message = {
+                    id: Date.now().toString(),
+                    user: { id: 'system', nickname: 'System' },
+                    text: `${nickname} has joined the room.`,
+                    timestamp: new new Date().toISOString(),
+                    type: 'system',
+                };
+                room.messages.push(systemMessage);
+            }
+        } else {
+            // Room does not exist, create it
             const owner = { id: socket.id, nickname };
             room = {
                 id: roomCode,
@@ -150,38 +188,14 @@ const socketHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
                 gameState: { isActive: false, phase: 'setup' },
             };
             rooms[roomCode] = room;
-        } else {
-            if (room.users.some(user => user.nickname.toLowerCase() === nickname.toLowerCase())) {
-              return callback({ error: 'Nickname is already taken.' });
-            }
-
-            const userInRoom = room.users.find(u => u.id === socket.id);
-            if (userInRoom) {
-                const oldNickname = userInRoom.nickname;
-                userInRoom.nickname = nickname;
-                if (room.owner.id === socket.id) {
-                    room.owner.nickname = nickname;
-                }
-                const systemMessage: Message = {
-                    id: Date.now().toString(),
-                    user: { id: 'system', nickname: 'System' },
-                    text: `${oldNickname} is now known as ${nickname}.`,
-                    timestamp: new Date().toISOString(),
-                    type: 'system',
-                };
-                room.messages.push(systemMessage);
-            } else {
-                const newUser = { id: socket.id, nickname };
-                room.users.push(newUser);
-                const systemMessage: Message = {
-                    id: Date.now().toString(),
-                    user: { id: 'system', nickname: 'System' },
-                    text: `${nickname} has joined the room.`,
-                    timestamp: new Date().toISOString(),
-                    type: 'system',
-                };
-                room.messages.push(systemMessage);
-            }
+             const systemMessage: Message = {
+                id: Date.now().toString(),
+                user: { id: 'system', nickname: 'System' },
+                text: `${nickname} created and joined the room.`,
+                timestamp: new Date().toISOString(),
+                type: 'system',
+            };
+            room.messages.push(systemMessage);
         }
         
         socket.join(roomCode);
@@ -247,7 +261,7 @@ const socketHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
                 isActive: true,
                 phase: 'questioning',
                 targetWord,
-                players: room.users.map((u) => ({ ...u, role: roles[u.nickname] as PlayerRole })),
+                players: room.users.map((u) => ({ ...u, role: roles[u.nickname] || null })),
                 timer: 300,
                 votes: {},
             };
@@ -266,9 +280,9 @@ const socketHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
             if (roomTimers[roomCode]) clearInterval(roomTimers[roomCode]);
             roomTimers[roomCode] = setTimeout(() => advanceGameState(roomCode, io), room.gameState.timer * 1000);
 
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error assigning roles:', error);
-            socket.emit('error', 'Failed to start the game.');
+            socket.emit('error', error.message || 'Failed to start the game.');
         }
     });
 
@@ -280,9 +294,13 @@ const socketHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
         if(voter && !room.gameState.votes?.[voter.id]) {
             room.gameState.votes = { ...room.gameState.votes, [voter.id]: voteForNickname };
 
-            const allPlayersVoted = room.gameState.players && Object.keys(room.gameState.votes).length === room.gameState.players.length;
+            const allVoted = room.gameState.players && Object.keys(room.gameState.votes).length === room.gameState.players.length;
 
-            if (allPlayersVoted) {
+            if (allVoted) {
+                 if (roomTimers[roomCode]) {
+                    clearTimeout(roomTimers[roomCode]);
+                    delete roomTimers[roomCode];
+                }
                 advanceGameState(roomCode, io);
             } else {
               io.to(roomCode).emit('game-update', room.gameState);
@@ -305,20 +323,25 @@ const socketHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
                     }
                     delete rooms[roomCode];
                 } else {
-                     if (room.owner.id === user.id && room.users.length > 0) {
+                     if (room.owner.id === user.id) {
                         room.owner = room.users[0];
+                        const ownerMessage: Message = { id: Date.now().toString(), user: { id: 'system', nickname: 'System' }, text: `${room.owner.nickname} is the new room owner.`, timestamp: new Date().toISOString(), type: 'system' };
+                        room.messages.push(ownerMessage);
                      }
                     const systemMessage: Message = { id: Date.now().toString(), user: { id: 'system', nickname: 'System' }, text: `${user.nickname} has left the room.`, timestamp: new Date().toISOString(), type: 'system' };
                     room.messages.push(systemMessage);
 
-                    if (room.gameState.isActive && (room.users.length < 4 || !room.gameState.players?.some(p => p.id === user.id))) {
-                         if (roomTimers[roomCode]) {
-                            clearInterval(roomTimers[roomCode]);
-                            delete roomTimers[roomCode];
-                        }
-                        room.gameState = { isActive: false, phase: 'setup' };
-                        const resetMessage: Message = { id: Date.now().toString(), user: { id: 'system', nickname: 'System' }, text: 'Game reset due to a player leaving.', timestamp: new Date().toISOString(), type: 'system' };
-                        room.messages.push(resetMessage);
+                    if (room.gameState.isActive) {
+                         const playerInGame = room.gameState.players?.find(p => p.id === user.id);
+                         if (playerInGame || room.users.length < 4) {
+                             if (roomTimers[roomCode]) {
+                                clearTimeout(roomTimers[roomCode]);
+                                delete roomTimers[roomCode];
+                            }
+                            room.gameState = { isActive: false, phase: 'setup' };
+                            const resetMessage: Message = { id: Date.now().toString(), user: { id: 'system', nickname: 'System' }, text: 'Game reset due to a player leaving.', timestamp: new Date().toISOString(), type: 'system' };
+                            room.messages.push(resetMessage);
+                         }
                     }
 
                     io.to(roomCode).emit('room-state', room);
