@@ -1,18 +1,18 @@
 
 "use client";
 
-import { useEffect, useState, useMemo } from 'react';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, useState, useMemo, Suspense } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import type { Socket } from 'socket.io-client';
 import { io } from 'socket.io-client';
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { LogOut, Users } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 
 import type { RoomState as GenericRoomState } from './types';
-import type { InsiderRoomState, InsiderGameState, Message as InsiderMessage, Player as InsiderPlayer } from './insider/types';
+import type { InsiderRoomState, Message as InsiderMessage, Player as InsiderPlayer } from './insider/types';
 import type { CoupRoomState, CoupGameState } from './coup/types';
 
 import UserListPanel from './components/UserListPanel';
@@ -22,8 +22,7 @@ import CoupPage from './coup/CoupPage';
 import ChatPanel from './components/ChatPanel';
 import RoleDialog from './components/RoleDialog';
 
-
-export default function RoomPage() {
+function RoomPageContent() {
     const params = useParams();
     const router = useRouter();
     const { toast } = useToast();
@@ -58,7 +57,16 @@ export default function RoomPage() {
             });
         });
 
-        newSocket.on('room-state', (state: GenericRoomState) => setRoomState(state));
+        newSocket.on('room-state', (state: GenericRoomState) => {
+            const sanitizedState = {
+                ...state,
+                coupGame: state.coupGame && typeof state.coupGame.getState === 'function' 
+                    ? state.coupGame.getState() 
+                    : state.coupGame,
+            };
+            setRoomState(sanitizedState);
+        });
+        
         newSocket.on('new-message', (newMessage: InsiderMessage) => {
             setRoomState(prev => prev ? { ...prev, messages: [...prev.messages, newMessage] } : null);
         });
@@ -133,7 +141,7 @@ export default function RoomPage() {
 
     const myInsiderRole = useMemo(() => {
         if (!socket || !roomState || roomState.activeGame !== 'insider') return null;
-        const insiderGameState = roomState.insiderGame as InsiderGameState;
+        const insiderGameState = roomState.insiderGame;
         if (!insiderGameState.isActive) return null;
         return insiderGameState.players?.find(p => p.id === socket.id)?.role || null;
     }, [socket, roomState]);
@@ -148,6 +156,7 @@ export default function RoomPage() {
     }
 
     const isOwner = socket.id === roomState.owner.id;
+    const coupGameState = roomState.coupGame;
 
     const renderGameContent = () => {
         switch (roomState.activeGame) {
@@ -172,7 +181,7 @@ export default function RoomPage() {
                  return <CoupPage
                     socket={socket}
                     roomCode={roomCode}
-                    roomState={{...roomState, coupGame: roomState.coupGame as CoupGameState}}
+                    roomState={{...roomState, coupGame: coupGameState}}
                     isOwner={isOwner}
                     onLeaveRoom={handleLeaveRoom}
                     onEndGame={handleEndGame}
@@ -223,3 +232,12 @@ export default function RoomPage() {
         </>
     )
 }
+
+export default function RoomPage() {
+    return (
+        <Suspense fallback={<div>Loading...</div>}>
+            <RoomPageContent />
+        </Suspense>
+    );
+}
+

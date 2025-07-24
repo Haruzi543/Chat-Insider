@@ -1,8 +1,8 @@
 
 "use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,7 +16,15 @@ export default function HomePage() {
   const [roomCode, setRoomCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
+
+  useEffect(() => {
+    const roomFromQuery = searchParams.get('room');
+    if (roomFromQuery) {
+      setRoomCode(roomFromQuery);
+    }
+  }, [searchParams]);
 
   const handleCreateRoom = (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,7 +69,7 @@ export default function HomePage() {
                 <form onSubmit={handleJoinRoom} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="join-nickname">Nickname</Label>
-                    <Input id="join-nickname" placeholder="Your display name" value={nickname} onChange={(e) => setNickname(e.target.value)} maxLength={20} required />
+                    <Input id="join-nickname" placeholder="Your display name" value={nickname} onChange={(e) => setNickname(e.target.value)} maxLength={20} required autoFocus={!!roomCode} />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="room-code">Room Code</Label>
@@ -84,7 +92,7 @@ export default function HomePage() {
                 <form onSubmit={handleCreateRoom} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="create-nickname">Nickname</Label>
-                    <Input id="create-nickname" placeholder="Your display name" value={nickname} onChange={(e) => setNickname(e.target.value)} maxLength={20} required />
+                    <Input id="create-nickname" placeholder="Your display name" value={nickname} onChange={(e) => setNickname(e.target.value)} maxLength={20} required autoFocus={!roomCode} />
                   </div>
                   <Button type="submit" className="w-full" disabled={isLoading}>
                     {isLoading ? <Loader2 className="animate-spin" /> : "Create Room"}

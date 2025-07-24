@@ -3,7 +3,9 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Crown, Users, User as UserIcon } from 'lucide-react';
+import { Crown, Users, User as UserIcon, Share2 } from 'lucide-react';
+import { useToast } from "@/hooks/use-toast";
+import { Button } from '@/components/ui/button';
 
 interface User {
   id: string;
@@ -18,10 +20,46 @@ interface UserListPanelProps {
 }
 
 export default function UserListPanel({ roomCode, users, ownerId, myId }: UserListPanelProps) {
+  const { toast } = useToast();
+
+  const handleShare = () => {
+    // Construct a URL with a query parameter
+    const url = `${window.location.origin}/?room=${roomCode}`;
+    navigator.clipboard.writeText(url).then(() => {
+      toast({
+        title: "Link Copied!",
+        description: "Room invitation link has been copied to your clipboard.",
+      });
+    }, (err) => {
+      toast({
+        title: "Error",
+        description: "Could not copy link to clipboard.",
+        variant: "destructive",
+      });
+      console.error('Could not copy text: ', err);
+    });
+  };
+
   return (
     <div>
-      <h2 className="text-xl font-bold mb-1">Chat & Games</h2>
-      <p className="text-sm text-muted-foreground mb-4">Room Code: <span className="font-mono text-primary">{roomCode}</span></p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-xl font-bold mb-1">Chat & Games</h2>
+          <p className="text-sm text-muted-foreground mb-4">Room Code: <span className="font-mono text-primary">{roomCode}</span></p>
+        </div>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" onClick={handleShare} className="shrink-0">
+                <Share2 className="w-4 h-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Share Room Link</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
 
       <Card>
         <CardHeader className="p-4">
@@ -46,3 +84,4 @@ export default function UserListPanel({ roomCode, users, ownerId, myId }: UserLi
   );
 }
 
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
