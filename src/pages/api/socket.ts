@@ -141,19 +141,36 @@ const socketHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
         const lowerCaseNickname = nickname.toLowerCase();
         let room = rooms[roomCode];
 
-        if (room) {
-            // Room exists, handle joining.
+        if (!room) {
+            // Room does not exist, so create it.
+            const owner = { id: socket.id, nickname };
+            room = {
+                id: roomCode,
+                owner,
+                users: [owner],
+                messages: [{
+                    id: Date.now().toString(),
+                    user: { id: 'system', nickname: 'System' },
+                    text: `${nickname} created and joined the room.`,
+                    timestamp: new Date().toISOString(),
+                    type: 'system',
+                }],
+                gameState: { isActive: false, phase: 'setup' },
+            };
+            rooms[roomCode] = room;
+        } else {
+            // Room exists, handle user joining or rejoining.
+            const userInRoom = room.users.find(u => u.id === socket.id);
             const isNicknameTaken = room.users.some(u => u.nickname.toLowerCase() === lowerCaseNickname && u.id !== socket.id);
+
             if (isNicknameTaken) {
                 return callback({ error: 'Nickname is already taken.' });
             }
-            
-            const userInRoom = room.users.find(u => u.id === socket.id);
 
             if (userInRoom) {
                 // User is rejoining
-                const oldNickname = userInRoom.nickname;
-                if (oldNickname.toLowerCase() !== lowerCaseNickname) {
+                if (userInRoom.nickname.toLowerCase() !== lowerCaseNickname) {
+                    const oldNickname = userInRoom.nickname;
                     userInRoom.nickname = nickname;
                      if (room.owner.id === socket.id) {
                         room.owner.nickname = nickname;
@@ -180,23 +197,6 @@ const socketHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
                 };
                 room.messages.push(systemMessage);
             }
-        } else {
-            // Room does not exist, so we create it.
-            const owner = { id: socket.id, nickname };
-            room = {
-                id: roomCode,
-                owner,
-                users: [owner],
-                messages: [{
-                    id: Date.now().toString(),
-                    user: { id: 'system', nickname: 'System' },
-                    text: `${nickname} created and joined the room.`,
-                    timestamp: new Date().toISOString(),
-                    type: 'system',
-                }],
-                gameState: { isActive: false, phase: 'setup' },
-            };
-            rooms[roomCode] = room;
         }
         
         socket.join(roomCode);
