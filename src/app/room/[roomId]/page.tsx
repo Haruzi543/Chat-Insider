@@ -35,40 +35,39 @@ export default function RoomPage() {
             return;
         }
 
-        // Ensure this runs only on the client-side
-        const socketUrl = window.location.origin;
-        const newSocket = io(socketUrl, {
-            path: "/api/socket_io",
-        });
+        // The fetch call is a standard part of the useEffect cleanup to establish connection
+        fetch('/api/socket').finally(() => {
+            const newSocket = io();
 
-        setSocket(newSocket);
-
-        newSocket.on('connect', () => {
-            console.log('Socket connected');
-            newSocket.emit('join-room', { roomCode, nickname: storedNickname }, (response: any) => {
-                if (response.error) {
-                    toast({ title: 'Join Error', description: response.error, variant: 'destructive' });
-                    router.push('/');
-                } else {
-                    setRoomState(response.roomState);
-                    setIsLoading(false);
-                }
+            setSocket(newSocket);
+    
+            newSocket.on('connect', () => {
+                console.log('Socket connected');
+                newSocket.emit('join-room', { roomCode, nickname: storedNickname }, (response: any) => {
+                    if (response.error) {
+                        toast({ title: 'Join Error', description: response.error, variant: 'destructive' });
+                        router.push('/');
+                    } else {
+                        setRoomState(response.roomState);
+                        setIsLoading(false);
+                    }
+                });
             });
-        });
-
-        newSocket.on('room-state', (state: RoomState) => setRoomState(state));
-        newSocket.on('new-message', (newMessage: Message) => setRoomState(prev => prev ? { ...prev, messages: [...prev.messages, newMessage] } : null));
-        newSocket.on('game-update', (gameState: GameState) => setRoomState(prev => prev ? { ...prev, gameState } : null));
-        newSocket.on('private-role', (data: { role: string; message: string }) => setRoleInfo(data));
-        newSocket.on('error', (message: string) => toast({ title: 'Server Error', description: message, variant: 'destructive' }));
-        newSocket.on('disconnect', () => {
-          toast({ title: 'Disconnected', description: 'You have been disconnected from the server.' });
-          router.push('/');
-        });
-
-        return () => {
-            newSocket.disconnect();
-        };
+    
+            newSocket.on('room-state', (state: RoomState) => setRoomState(state));
+            newSocket.on('new-message', (newMessage: Message) => setRoomState(prev => prev ? { ...prev, messages: [...prev.messages, newMessage] } : null));
+            newSocket.on('game-update', (gameState: GameState) => setRoomState(prev => prev ? { ...prev, gameState } : null));
+            newSocket.on('private-role', (data: { role: string; message: string }) => setRoleInfo(data));
+            newSocket.on('error', (message: string) => toast({ title: 'Server Error', description: message, variant: 'destructive' }));
+            newSocket.on('disconnect', () => {
+              toast({ title: 'Disconnected', description: 'You have been disconnected from the server.' });
+              router.push('/');
+            });
+    
+            return () => {
+                newSocket.disconnect();
+            };
+        })
     }, [roomCode, router, toast]);
 
     const handleLeaveRoom = () => {
