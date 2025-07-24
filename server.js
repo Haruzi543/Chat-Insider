@@ -38,6 +38,7 @@ const getSanitizedRoom = (room) => {
     if (!room) return null;
     const sanitizedRoom = { ...room };
     if (sanitizedRoom.coupGame instanceof CoupGame) {
+        // Replace the class instance with its plain state object
         sanitizedRoom.coupGame = sanitizedRoom.coupGame.getState();
     }
     return sanitizedRoom;
