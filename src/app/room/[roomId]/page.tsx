@@ -7,33 +7,30 @@ import type { Socket } from 'socket.io-client';
 import { io } from 'socket.io-client';
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { LogOut, Users } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
 
+import type { RoomState as GenericRoomState } from './types';
 import type { RoomState as InsiderRoomState, GameState as InsiderGameState, Message as InsiderMessage, Player as InsiderPlayer } from './insider/types';
-import type { GameState as CoupGameState, Player as CoupPlayer } from './coup/types';
+import type { RoomState as CoupRoomState, GameState as CoupGameState } from './coup/types';
 
+import UserListPanel from './components/UserListPanel';
+import GameControlPanel from './components/GameControlPanel';
 import InsiderPage from './insider/InsiderPage';
 import CoupPage from './coup/CoupPage';
-
-export interface SharedRoomState {
-  id: string;
-  owner: { id: string; nickname: string };
-  users: { id: string; nickname: string }[];
-  gameType: 'insider' | 'coup';
-  messages: InsiderMessage[]; 
-  gameState: InsiderGameState | CoupGameState;
-}
+import ChatPanel from './components/ChatPanel';
+import RoleDialog from './components/RoleDialog';
 
 
 export default function RoomPage() {
     const params = useParams();
     const router = useRouter();
-    const searchParams = useSearchParams();
     const { toast } = useToast();
     const roomCode = (params.roomId as string).toUpperCase();
-    const gameType = searchParams.get('game');
 
     const [socket, setSocket] = useState<Socket | null>(null);
-    const [roomState, setRoomState] = useState<SharedRoomState | null>(null);
+    const [roomState, setRoomState] = useState<GenericRoomState | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     
     // Insider specific state
@@ -50,8 +47,7 @@ export default function RoomPage() {
         setSocket(newSocket);
 
         newSocket.on('connect', () => {
-            console.log('Socket connected');
-            newSocket.emit('join-room', { roomCode, nickname: storedNickname, gameType }, (response: any) => {
+            newSocket.emit('join-room', { roomCode, nickname: storedNickname }, (response: any) => {
                 if (response.error) {
                     toast({ title: 'Join Error', description: response.error, variant: 'destructive' });
                     router.push('/');
@@ -62,16 +58,11 @@ export default function RoomPage() {
             });
         });
 
-        newSocket.on('room-state', (state: SharedRoomState) => setRoomState(state));
+        newSocket.on('room-state', (state: GenericRoomState) => setRoomState(state));
         newSocket.on('new-message', (newMessage: InsiderMessage) => {
-             if (roomState?.gameType === 'insider') {
-                setRoomState(prev => prev ? { ...prev, messages: [...prev.messages, newMessage] } : null)
-             }
+            setRoomState(prev => prev ? { ...prev, messages: [...prev.messages, newMessage] } : null);
         });
-        newSocket.on('game-update', (gameState: InsiderGameState | CoupGameState) => {
-            setRoomState(prev => prev ? { ...prev, gameState } : null);
-        });
-
+        
         // Insider specific listeners
         newSocket.on('private-role', (data: { role: string; message: string }) => setRoleInfo(data));
         
@@ -85,7 +76,7 @@ export default function RoomPage() {
         return () => {
             newSocket.disconnect();
         };
-    }, [roomCode, router, toast, gameType]);
+    }, [roomCode, router, toast]);
 
     const handleLeaveRoom = () => {
         socket?.emit('leave-room');
@@ -97,6 +88,14 @@ export default function RoomPage() {
             socket.emit('send-message', { roomCode, message });
         }
     };
+
+    const handleStartGame = (gameType: 'insider' | 'coup') => {
+        if (socket) socket.emit('start-game', { roomCode, gameType });
+    };
+
+    const handleEndGame = () => {
+        if (socket) socket.emit('end-game', { roomCode });
+    };
     
     // ===== Insider Handlers =====
     const handleInsiderSendAnswer = (questionId: string, answer: string) => {
@@ -105,9 +104,9 @@ export default function RoomPage() {
     const handleInsiderCorrectGuess = (messageId: string) => {
         if (socket) socket.emit('insider-correct-guess', { roomCode, messageId });
     };
-    const handleInsiderStartGame = (targetWord: string) => {
+    const handleInsiderStartGame = (targetWord: string) => { // This is for the game panel within Insider
         if (socket && targetWord.trim()) {
-            socket.emit('insider-start-game', { roomCode, targetWord });
+            socket.emit('insider-start-game-params', { roomCode, targetWord });
         } else {
             toast({ title: "Game Error", description: "Please enter a target word.", variant: "destructive" });
         }
@@ -125,8 +124,8 @@ export default function RoomPage() {
     };
 
     const myInsiderRole = useMemo(() => {
-        if (!socket || !roomState || roomState.gameType !== 'insider') return null;
-        const insiderGameState = roomState.gameState as InsiderGameState;
+        if (!socket || !roomState || roomState.activeGame !== 'insider') return null;
+        const insiderGameState = roomState.insiderGame as InsiderGameState;
         if (!insiderGameState.isActive) return null;
         return insiderGameState.players?.find(p => p.id === socket.id)?.role || null;
     }, [socket, roomState]);
@@ -142,38 +141,72 @@ export default function RoomPage() {
 
     const isOwner = socket.id === roomState.owner.id;
 
-    if (roomState.gameType === 'insider') {
-        return <InsiderPage
-            socket={socket}
-            roomState={roomState as InsiderRoomState}
-            isOwner={isOwner}
-            myRole={myInsiderRole}
-            roleInfo={roleInfo}
-            setRoleInfo={setRoleInfo}
-            onLeaveRoom={handleLeaveRoom}
-            onSendMessage={handleSendMessage}
-            onStartGame={handleInsiderStartGame}
-            onSendAnswer={handleInsiderSendAnswer}
-            onCorrectGuess={handleInsiderCorrectGuess}
-            onSubmitVote={handleInsiderSubmitVote}
-        />;
-    }
-
-    if (roomState.gameType === 'coup') {
-         return <CoupPage
-            socket={socket}
-            roomCode={roomCode}
-            roomState={roomState}
-            isOwner={isOwner}
-            onLeaveRoom={handleLeaveRoom}
-            onGameAction={handleCoupAction}
-        />;
-    }
-
+    const renderGameContent = () => {
+        switch (roomState.activeGame) {
+            case 'insider':
+                return <InsiderPage
+                    socket={socket}
+                    roomState={roomState as unknown as InsiderRoomState}
+                    isOwner={isOwner}
+                    myRole={myInsiderRole}
+                    roleInfo={roleInfo}
+                    setRoleInfo={setRoleInfo}
+                    onLeaveRoom={handleLeaveRoom}
+                    onSendMessage={handleSendMessage}
+                    onStartGame={handleInsiderStartGame}
+                    onSendAnswer={handleInsiderSendAnswer}
+                    onCorrectGuess={handleInsiderCorrectGuess}
+                    onSubmitVote={handleInsiderSubmitVote}
+                />;
+            case 'coup':
+                 return <CoupPage
+                    socket={socket}
+                    roomCode={roomCode}
+                    roomState={roomState as unknown as CoupRoomState}
+                    isOwner={isOwner}
+                    onLeaveRoom={handleLeaveRoom}
+                    onGameAction={handleCoupAction}
+                />;
+            default:
+                // No game is active, show a lobby / chat view
+                return (
+                    <div className="flex h-screen bg-background text-foreground">
+                        <aside className="hidden md:flex flex-col w-64 lg:w-80 border-r border-border p-4">
+                            <UserListPanel
+                                roomCode={roomState.id}
+                                users={roomState.users}
+                                ownerId={roomState.owner.id}
+                                myId={socket.id}
+                            />
+                            <Separator className="my-4" />
+                            {isOwner && (
+                                <GameControlPanel
+                                    onStartGame={handleStartGame}
+                                    onEndGame={handleEndGame}
+                                    activeGame={roomState.activeGame}
+                                    users={roomState.users}
+                                />
+                            )}
+                            <Button onClick={handleLeaveRoom} variant="outline" className="mt-auto">
+                                <LogOut className="mr-2 h-4 w-4" /> Leave Room
+                            </Button>
+                        </aside>
+                         <main className="flex-1 flex flex-col h-screen max-h-screen overflow-hidden">
+                             <ChatPanel
+                                messages={roomState.messages}
+                                myId={socket.id}
+                                onSendMessage={handleSendMessage}
+                             />
+                         </main>
+                    </div>
+                );
+        }
+    };
+    
     return (
-        <div className="flex h-screen items-center justify-center bg-background">
-            <p className="text-lg text-destructive">Error: Invalid game type.</p>
-        </div>
-    );
+        <>
+            <RoleDialog roleInfo={roleInfo} onOpenChange={() => setRoleInfo(null)} />
+            {renderGameContent()}
+        </>
+    )
 }
-

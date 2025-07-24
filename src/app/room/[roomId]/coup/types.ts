@@ -1,4 +1,6 @@
 
+import type { User } from '../insider/types';
+
 export type CardName = 'Duke' | 'Assassin' | 'Contessa' | 'Captain' | 'Ambassador';
 
 export interface Player {
@@ -36,10 +38,10 @@ export interface GameState {
     log: { id: string, message: string }[];
 }
 
-export interface RoomState {
+export interface CoupRoomState {
   id: string;
-  owner: { id: string; nickname: string };
-  users: { id: string; nickname: string }[];
+  owner: User;
+  users: User[];
   gameType: 'coup';
   gameState: GameState;
 }

@@ -6,7 +6,8 @@ import type { Socket } from 'socket.io-client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { User, Shield, Swords, DollarSign, Crown, Users, LogOut, VenetianMask } from 'lucide-react';
-import type { RoomState, Player } from './types';
+import type { RoomState } from '../types';
+import type { Player } from './types';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface CoupPageProps {
@@ -27,7 +28,8 @@ const cardDetails = {
 };
 
 export default function CoupPage({ socket, roomCode, roomState, isOwner, onLeaveRoom, onGameAction }: CoupPageProps) {
-    const { gameState, users } = roomState;
+    const gameState = roomState.coupGame;
+    const { users } = roomState;
     const me = gameState.players.find(p => p.id === socket.id);
     const otherPlayers = gameState.players.filter(p => p.id !== socket.id);
     const currentPlayer = gameState.players.find(p => p.id === gameState.currentPlayerId);
@@ -71,6 +73,21 @@ export default function CoupPage({ socket, roomCode, roomState, isOwner, onLeave
     );
 
     const canTakeAction = isMyTurn && gameState.phase === 'turn';
+
+    const getTargetablePlayers = () => {
+        return gameState.players.filter(p => p.id !== socket.id && !p.isEliminated);
+    };
+
+    const handleActionWithTarget = (action: string) => {
+        const targets = getTargetablePlayers();
+        if (targets.length === 1) {
+            onGameAction(action, targets[0].id);
+        } else {
+            // Here you would open a dialog to select a target.
+            // For now, we can just alert or log.
+            alert(`Please select a target for ${action}.`);
+        }
+    }
 
     return (
         <div className="flex flex-col h-screen bg-background text-foreground p-4 gap-4">
@@ -119,9 +136,9 @@ export default function CoupPage({ socket, roomCode, roomState, isOwner, onLeave
                            <Button onClick={() => onGameAction('income')} disabled={!canTakeAction}>Income (+1 coin)</Button>
                            <Button onClick={() => onGameAction('foreign_aid')} disabled={!canTakeAction}>Foreign Aid (+2 coins)</Button>
                            <Button onClick={() => onGameAction('tax')} disabled={!canTakeAction}>Tax (Duke, +3 coins)</Button>
-                           <Button onClick={() => onGameAction('coup')} disabled={!canTakeAction || (me?.coins ?? 0) < 7}>Coup (Cost 7)</Button>
-                           <Button onClick={() => onGameAction('steal')} disabled={!canTakeAction}>Steal (Captain)</Button>
-                           <Button onClick={() => onGameAction('assassinate')} disabled={!canTakeAction || (me?.coins ?? 0) < 3}>Assassinate (Cost 3)</Button>
+                           <Button onClick={() => handleActionWithTarget('coup')} disabled={!canTakeAction || (me?.coins ?? 0) < 7}>Coup (Cost 7)</Button>
+                           <Button onClick={() => handleActionWithTarget('steal')} disabled={!canTakeAction}>Steal (Captain)</Button>
+                           <Button onClick={() => handleActionWithTarget('assassinate')} disabled={!canTakeAction || (me?.coins ?? 0) < 3}>Assassinate (Cost 3)</Button>
                            <Button onClick={() => onGameAction('exchange')} disabled={!canTakeAction}>Exchange (Ambassador)</Button>
                        </CardContent>
                    </Card>
@@ -136,15 +153,8 @@ export default function CoupPage({ socket, roomCode, roomState, isOwner, onLeave
                             </ScrollArea>
                         </CardContent>
                     </Card>
-                    
-                    {isOwner && gameState.phase === 'waiting' && (
-                        <Button onClick={() => onGameAction('start_game')} disabled={users.length < 2 || users.length > 6}>
-                           Start Game ({users.length}/6 players)
-                        </Button>
-                    )}
                 </div>
             </main>
         </div>
     );
 }
-

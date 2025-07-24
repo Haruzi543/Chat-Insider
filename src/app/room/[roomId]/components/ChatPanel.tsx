@@ -12,11 +12,11 @@ import type { GameState, Message, Player } from '../insider/types';
 interface ChatPanelProps {
   messages: Message[];
   myId: string;
-  myRole: Player['role'];
-  gameState: GameState;
+  myRole?: Player['role'] | null;
+  gameState?: GameState;
   onSendMessage: (message: string) => void;
-  onSendAnswer: (questionId: string, answer: string) => void;
-  onCorrectGuess: (messageId: string) => void;
+  onSendAnswer?: (questionId: string, answer: string) => void;
+  onCorrectGuess?: (messageId: string) => void;
 }
 
 export default function ChatPanel({ messages, myId, myRole, gameState, onSendMessage, onSendAnswer, onCorrectGuess }: ChatPanelProps) {
@@ -30,12 +30,13 @@ export default function ChatPanel({ messages, myId, myRole, gameState, onSendMes
   };
 
   const handleAnswer = (questionId: string, answer: string) => {
-    onSendAnswer(questionId, answer);
+    if (onSendAnswer) onSendAnswer(questionId, answer);
   };
   
   const isGuess = (text: string) => text.toLowerCase().startsWith('[guess]');
 
   const canBeAnswered = (msg: Message) => {
+    if (!gameState) return false;
     const questioner = gameState.players?.find(p => p.id === msg.user.id);
     return gameState.isActive && 
            gameState.phase === 'questioning' &&
@@ -46,6 +47,7 @@ export default function ChatPanel({ messages, myId, myRole, gameState, onSendMes
   
   const canConfirmGuess = (msg: Message) => {
       return myRole === 'Master' && 
+             gameState &&
              gameState.isActive && 
              gameState.phase === 'questioning' &&
              isGuess(msg.text);
@@ -74,7 +76,7 @@ export default function ChatPanel({ messages, myId, myRole, gameState, onSendMes
                     </div>
                     <p className={`text-sm break-words ${msg.type === 'game' ? 'italic text-accent-foreground/90' : ''}`}>{msg.text}</p>
                     
-                    {myRole === 'Master' && canBeAnswered(msg) && (
+                    {myRole === 'Master' && gameState && onSendAnswer && canBeAnswered(msg) && (
                       <div className="flex gap-2 mt-2">
                         <Button size="sm" variant="outline" onClick={() => handleAnswer(msg.id, 'Yes')}>Yes</Button>
                         <Button size="sm" variant="outline" onClick={() => handleAnswer(msg.id, 'No')}>No</Button>
@@ -82,7 +84,7 @@ export default function ChatPanel({ messages, myId, myRole, gameState, onSendMes
                       </div>
                     )}
                     
-                    {canConfirmGuess(msg) && (
+                    {onCorrectGuess && canConfirmGuess(msg) && (
                       <Button size="sm" variant="outline" className="mt-2 text-green-500 border-green-500 hover:bg-green-500/10 hover:text-green-600" onClick={() => onCorrectGuess(msg.id)}>
                         <Check className="mr-2 h-4 w-4" /> Correct Guess
                       </Button>
@@ -100,7 +102,7 @@ export default function ChatPanel({ messages, myId, myRole, gameState, onSendMes
           <Input 
             value={message} 
             onChange={e => setMessage(e.target.value)} 
-            placeholder={gameState.phase === 'questioning' ? "Type [guess] YourGuess to submit an answer" : "Type a message..."} 
+            placeholder={gameState?.phase === 'questioning' ? "Type [guess] YourGuess to submit an answer" : "Type a message..."} 
             maxLength={200} 
             autoComplete="off" 
           />
@@ -112,4 +114,3 @@ export default function ChatPanel({ messages, myId, myRole, gameState, onSendMes
     </>
   );
 }
-

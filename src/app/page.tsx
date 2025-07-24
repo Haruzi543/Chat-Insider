@@ -8,14 +8,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from 'lucide-react';
 
 export default function HomePage() {
   const [nickname, setNickname] = useState('');
   const [roomCode, setRoomCode] = useState('');
-  const [gameType, setGameType] = useState('insider');
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
@@ -29,7 +27,7 @@ export default function HomePage() {
     setIsLoading(true);
     const newRoomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
     sessionStorage.setItem('nickname', nickname);
-    router.push(`/room/${newRoomCode}?game=${gameType}`);
+    router.push(`/room/${newRoomCode}`);
   };
 
   const handleJoinRoom = (e: React.FormEvent) => {
@@ -88,24 +86,12 @@ export default function HomePage() {
                     <Label htmlFor="create-nickname">Nickname</Label>
                     <Input id="create-nickname" placeholder="Your display name" value={nickname} onChange={(e) => setNickname(e.target.value)} maxLength={20} required />
                   </div>
-                   <div className="space-y-2">
-                    <Label htmlFor="game-type">Game</Label>
-                    <Select value={gameType} onValueChange={setGameType}>
-                      <SelectTrigger id="game-type">
-                        <SelectValue placeholder="Select a game" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="insider">Chat Insider</SelectItem>
-                        <SelectItem value="coup">Coup</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
                   <Button type="submit" className="w-full" disabled={isLoading}>
                     {isLoading ? <Loader2 className="animate-spin" /> : "Create Room"}
                   </Button>
                 </form>
               </CardContent>
-            </Card>
+            </card>
           </TabsContent>
         </Tabs>
       </div>
