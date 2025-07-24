@@ -5,6 +5,7 @@ import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { LogOut, Pause, Play } from 'lucide-react';
 import type { Socket } from 'socket.io-client';
+import { useSound } from '@/hooks/useSound';
 
 import type { InsiderRoomState } from './types';
 import type { Player } from './types';
@@ -37,6 +38,7 @@ export default function InsiderPage({
     onPause, onResume
 }: InsiderPageProps) {
     const { insiderGame } = roomState;
+    const { playClick } = useSound();
     return (
         <div className="flex h-screen bg-background text-foreground">
             <aside className="hidden md:flex flex-col w-64 lg:w-80 border-r border-border p-4">
@@ -60,13 +62,13 @@ export default function InsiderPage({
                     {isOwner && insiderGame.isActive && (
                         <>
                             {insiderGame.paused ? (
-                                <Button onClick={onResume} variant="outline"><Play className="mr-2" /> Resume Game</Button>
+                                <Button onClick={() => {playClick(); onResume()}} variant="outline"><Play className="mr-2" /> Resume Game</Button>
                             ) : (
-                                <Button onClick={onPause} variant="outline"><Pause className="mr-2" /> Pause Game</Button>
+                                <Button onClick={() => {playClick(); onPause()}} variant="outline"><Pause className="mr-2" /> Pause Game</Button>
                             )}
                         </>
                     )}
-                    <Button onClick={onLeaveRoom} variant="outline">
+                    <Button onClick={() => {playClick(); onLeaveRoom()}} variant="outline">
                         <LogOut className="mr-2 h-4 w-4" /> Leave Room
                     </Button>
                 </div>
@@ -85,7 +87,7 @@ export default function InsiderPage({
                      <div className="absolute inset-0 bg-black/70 z-20 flex flex-col items-center justify-center gap-4">
                         <Pause className="w-16 h-16 text-white"/>
                         <h2 className="text-3xl font-bold text-white">Game Paused</h2>
-                        {isOwner && <Button onClick={onResume}><Play className="mr-2"/>Resume Game</Button>}
+                        {isOwner && <Button onClick={() => {playClick(); onResume()}}><Play className="mr-2"/>Resume Game</Button>}
                     </div>
                 )}
                 <ChatPanel

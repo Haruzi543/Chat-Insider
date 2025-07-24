@@ -24,6 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { CoupRoomState, CoupGameState, Player } from './types';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
+import { useSound } from '@/hooks/useSound';
 
 interface CoupPageProps {
   socket: Socket;
@@ -54,6 +55,7 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
     const [targetSelection, setTargetSelection] = useState<{action: string, required: number} | null>(null);
     const [revealSelection, setRevealSelection] = useState<string | null>(null);
     const [exchangeSelection, setExchangeSelection] = useState<string[]>([]);
+    const { playClick, playCardFlip } = useSound();
 
     const isMyTurn = me?.id === gameState.currentPlayerId;
     const mustCoup = (me?.coins ?? 0) >= 10;
@@ -66,6 +68,7 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
         return player.influence.map((influence, index) => (
             <div key={index} className="[perspective:1000px]">
                 <Card 
+                    onClick={() => {if(influence.isRevealed) playCardFlip()}}
                     className={cn(
                         "w-20 h-28 flex flex-col items-center justify-center text-white transition-transform duration-700 [transform-style:preserve-3d]",
                         influence.isRevealed ? '[transform:rotateY(180deg)]' : '',
@@ -109,6 +112,7 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
     );
     
     const handleActionWithTarget = (action: string, required: number) => {
+        playClick();
         const targets = targetablePlayers;
         if (targets.length < required) {
             return;
@@ -118,6 +122,11 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
         } else {
             setTargetSelection({ action, required });
         }
+    };
+    
+    const handleGenericAction = (action: string) => {
+        playClick();
+        onGameAction(action);
     };
 
     const renderActionResponseDialog = () => {
@@ -154,9 +163,9 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
                         {isMyAction && <p className="text-sm text-muted-foreground">Waiting for other players to respond...</p>}
                         {myTurnToRespond ? (
                              <>
-                                {canChallenge && <Button variant="outline" onClick={() => onGameAction('challenge')}>Challenge</Button>}
-                                {canBlock && blockCards?.map(card => <Button key={card} variant="secondary" onClick={() => onGameAction('block', undefined, { card })}>Block with {card}</Button>)}
-                                <Button onClick={() => onGameAction('pass')}>Pass</Button>
+                                {canChallenge && <Button variant="outline" onClick={() => handleGenericAction('challenge')}>Challenge</Button>}
+                                {canBlock && blockCards?.map(card => <Button key={card} variant="secondary" onClick={() => {playClick(); onGameAction('block', undefined, { card })}}>Block with {card}</Button>)}
+                                <Button onClick={() => handleGenericAction('pass')}>Pass</Button>
                             </>
                         ) : (!isMyAction && haveIResponded) ? (
                             <p className="text-sm text-muted-foreground">You have passed. Waiting for others...</p>
@@ -187,8 +196,8 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
                     <AlertDialogFooter className="flex-row sm:flex-row justify-end gap-2">
                          {amIActor && !haveIResponded ? (
                             <>
-                                <Button variant="destructive" onClick={() => onGameAction('challenge')}>Challenge Block</Button>
-                                <Button onClick={() => onGameAction('pass')}>Accept Block</Button>
+                                <Button variant="destructive" onClick={() => handleGenericAction('challenge')}>Challenge Block</Button>
+                                <Button onClick={() => handleGenericAction('pass')}>Accept Block</Button>
                             </>
                          ) : (
                             <p className="text-sm text-muted-foreground">Waiting for {actor.nickname} to respond...</p>
@@ -215,11 +224,11 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
                     </AlertDialogHeader>
                     <div className="flex justify-center gap-4 my-4">
                         {availableInfluence.map(inf => (
-                             <Button key={inf.card} variant={revealSelection === inf.card ? 'default' : 'outline'} onClick={() => setRevealSelection(inf.card)}>Reveal {inf.card}</Button>
+                             <Button key={inf.card} variant={revealSelection === inf.card ? 'default' : 'outline'} onClick={() => {playClick(); setRevealSelection(inf.card)}}>Reveal {inf.card}</Button>
                         ))}
                     </div>
                     <AlertDialogFooter>
-                         <Button disabled={!revealSelection} onClick={() => {onGameAction('reveal', undefined, { card: revealSelection }); setRevealSelection(null);}}>Confirm Reveal</Button>
+                         <Button disabled={!revealSelection} onClick={() => {playCardFlip(); onGameAction('reveal', undefined, { card: revealSelection }); setRevealSelection(null);}}>Confirm Reveal</Button>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
@@ -246,6 +255,7 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
                                     id={`card-${idx}`}
                                     checked={exchangeSelection.includes(card)}
                                     onCheckedChange={(checked) => {
+                                        playClick();
                                         setExchangeSelection(prev => {
                                           if (checked) {
                                             if (prev.length < myInfluenceCount) {
@@ -265,7 +275,7 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
                     <AlertDialogFooter>
                         <Button
                             disabled={exchangeSelection.length !== myInfluenceCount}
-                            onClick={() => { onGameAction('exchange-response', undefined, { cards: exchangeSelection }); setExchangeSelection([]) }}
+                            onClick={() => { playClick(); onGameAction('exchange-response', undefined, { cards: exchangeSelection }); setExchangeSelection([]) }}
                         >Confirm Exchange</Button>
                     </AlertDialogFooter>
                 </AlertDialogContent>
@@ -291,13 +301,13 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
                     <CardTitle className="text-lg">Actions</CardTitle>
                 </CardHeader>
                 <CardContent className="grid grid-cols-2 gap-2 p-4 pt-0">
-                    <Button onClick={() => onGameAction('income')} disabled={!isMyTurn || gameState.phase !== 'turn' || mustCoup}>Income (+1)</Button>
-                    <Button onClick={() => onGameAction('foreign_aid')} disabled={!isMyTurn || gameState.phase !== 'turn' || mustCoup}>Foreign Aid (+2)</Button>
+                    <Button onClick={() => handleGenericAction('income')} disabled={!isMyTurn || gameState.phase !== 'turn' || mustCoup}>Income (+1)</Button>
+                    <Button onClick={() => handleGenericAction('foreign_aid')} disabled={!isMyTurn || gameState.phase !== 'turn' || mustCoup}>Foreign Aid (+2)</Button>
                     <Button onClick={() => handleActionWithTarget('coup', 1)} disabled={!isMyTurn || gameState.phase !== 'turn' || (me?.coins ?? 0) < 7}>Coup (Cost 7)</Button>
-                    <Button onClick={() => onGameAction('tax')} disabled={!isMyTurn || gameState.phase !== 'turn' || mustCoup}>Tax (Duke)</Button>
+                    <Button onClick={() => handleGenericAction('tax')} disabled={!isMyTurn || gameState.phase !== 'turn' || mustCoup}>Tax (Duke)</Button>
                     <Button onClick={() => handleActionWithTarget('assassinate', 1)} disabled={!isMyTurn || gameState.phase !== 'turn' || mustCoup || (me?.coins ?? 0) < 3}>Assassinate (Cost 3)</Button>
                     <Button onClick={() => handleActionWithTarget('steal', 1)} disabled={!isMyTurn || gameState.phase !== 'turn' || mustCoup}>Steal (Captain)</Button>
-                    <Button onClick={() => onGameAction('exchange')} disabled={!isMyTurn || gameState.phase !== 'turn' || mustCoup}>Exchange (Amb.)</Button>
+                    <Button onClick={() => handleGenericAction('exchange')} disabled={!isMyTurn || gameState.phase !== 'turn' || mustCoup}>Exchange (Amb.)</Button>
                     {mustCoup && <p className="col-span-2 text-center text-destructive text-sm">You must Coup (10+ coins)</p>}
                 </CardContent>
             </Card>
@@ -327,13 +337,13 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
                     {isOwner && (
                         <>
                         {gameState.paused ? (
-                            <Button onClick={onResume} variant="outline" size="sm"><Play className="mr-2"/> Resume</Button>
+                            <Button onClick={() => {playClick(); onResume()}} variant="outline" size="sm"><Play className="mr-2"/> Resume</Button>
                         ) : (
-                            <Button onClick={onPause} variant="outline" size="sm" disabled={gameState.phase === 'game-over'}><Pause className="mr-2"/> Pause</Button>
+                            <Button onClick={() => {playClick(); onPause()}} variant="outline" size="sm" disabled={gameState.phase === 'game-over'}><Pause className="mr-2"/> Pause</Button>
                         )}
                         </>
                     )}
-                    <Button onClick={onLeaveRoom} variant="outline" size="sm"><LogOut className="mr-2"/> Leave</Button>
+                    <Button onClick={() => {playClick(); onLeaveRoom()}} variant="outline" size="sm"><LogOut className="mr-2"/> Leave</Button>
                 </div>
             </header>
             
@@ -342,7 +352,7 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
                     <div className="absolute inset-0 bg-black/70 z-20 flex flex-col items-center justify-center gap-4">
                         <Pause className="w-16 h-16 text-white"/>
                         <h2 className="text-3xl font-bold text-white">Game Paused</h2>
-                        {isOwner && <Button onClick={onResume}><Play className="mr-2"/>Resume Game</Button>}
+                        {isOwner && <Button onClick={() => {playClick(); onResume()}}><Play className="mr-2"/>Resume Game</Button>}
                     </div>
                 )}
                  {gameState.phase === 'game-over' && gameState.winner && (
@@ -350,7 +360,7 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
                         <Crown className="w-24 h-24 text-amber-400 animate-bounce"/>
                         <h2 className="text-4xl font-bold text-white">Game Over!</h2>
                         <p className="text-2xl text-white">{gameState.winner} is the winner!</p>
-                        {isOwner && <Button onClick={onEndGame} className="mt-4">Play Again</Button>}
+                        {isOwner && <Button onClick={() => {playClick(); onEndGame()}} className="mt-4">Play Again</Button>}
                     </div>
                 )}
 
@@ -406,11 +416,11 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
                     </AlertDialogHeader>
                     <div className="flex flex-col gap-2">
                         {targetablePlayers.map(p => (
-                             <Button key={p.id} variant="outline" onClick={() => {onGameAction(targetSelection!.action, p.id); setTargetSelection(null);}}>{p.nickname}</Button>
+                             <Button key={p.id} variant="outline" onClick={() => {playClick(); onGameAction(targetSelection!.action, p.id); setTargetSelection(null);}}>{p.nickname}</Button>
                         ))}
                     </div>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogCancel onClick={playClick}>Cancel</AlertDialogCancel>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>

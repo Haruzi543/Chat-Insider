@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from "@/hooks/use-toast";
+import { useSound } from "@/hooks/useSound";
 import { Loader2 } from 'lucide-react';
 
 function HomePageContent() {
@@ -18,6 +19,7 @@ function HomePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
+  const { playClick } = useSound();
 
   useEffect(() => {
     const roomFromQuery = searchParams.get('room');
@@ -32,6 +34,7 @@ function HomePageContent() {
       toast({ title: "Error", description: "Please enter a nickname.", variant: "destructive" });
       return;
     }
+    playClick();
     setIsLoading(true);
     const newRoomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
     sessionStorage.setItem('nickname', nickname);
@@ -44,6 +47,7 @@ function HomePageContent() {
       toast({ title: "Error", description: "Please enter both a nickname and a room code.", variant: "destructive" });
       return;
     }
+    playClick();
     setIsLoading(true);
     sessionStorage.setItem('nickname', nickname);
     router.push(`/room/${roomCode.toUpperCase()}`);

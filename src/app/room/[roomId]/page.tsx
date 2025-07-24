@@ -21,12 +21,14 @@ import InsiderPage from './insider/InsiderPage';
 import CoupPage from './coup/CoupPage';
 import ChatPanel from './components/ChatPanel';
 import RoleDialog from './components/RoleDialog';
+import { useSound } from '@/hooks/useSound';
 
 function RoomPageContent() {
     const params = useParams();
     const router = useRouter();
     const { toast } = useToast();
     const roomCode = (params.roomId as string).toUpperCase();
+    const { playMessage, playJoin, playLeave, playError, playSuccess } = useSound();
 
     const [socket, setSocket] = useState<Socket | null>(null);
     const [roomState, setRoomState] = useState<GenericRoomState | null>(null);
@@ -48,11 +50,13 @@ function RoomPageContent() {
         newSocket.on('connect', () => {
             newSocket.emit('join-room', { roomCode, nickname: storedNickname }, (response: any) => {
                 if (response.error) {
+                    playError();
                     toast({ title: 'Join Error', description: response.error, variant: 'destructive' });
                     router.push('/');
                 } else {
                     setRoomState(response.roomState);
                     setIsLoading(false);
+                    playJoin();
                 }
             });
         });
@@ -68,15 +72,33 @@ function RoomPageContent() {
         });
         
         newSocket.on('new-message', (newMessage: InsiderMessage) => {
-            setRoomState(prev => prev ? { ...prev, messages: [...prev.messages, newMessage] } : null);
+            setRoomState(prev => {
+                if (prev) {
+                    const isNewUserMessage = newMessage.type === 'system' && newMessage.text.includes('has joined');
+                    const isUserLeaveMessage = newMessage.type === 'system' && newMessage.text.includes('has left');
+                    const isMyMessage = newMessage.user.id === newSocket.id;
+                    
+                    if (isNewUserMessage) playJoin();
+                    else if (isUserLeaveMessage) playLeave();
+                    else if (!isMyMessage) playMessage();
+                }
+                return prev ? { ...prev, messages: [...prev.messages, newMessage] } : null;
+            });
         });
         
         // Insider specific listeners
-        newSocket.on('private-role', (data: { role: string; message: string }) => setRoleInfo(data));
+        newSocket.on('private-role', (data: { role: string; message: string }) => {
+            setRoleInfo(data);
+            playSuccess();
+        });
         
         // Generic listeners
-        newSocket.on('error', (message: string) => toast({ title: 'Server Error', description: message, variant: 'destructive' }));
+        newSocket.on('error', (message: string) => {
+            playError();
+            toast({ title: 'Server Error', description: message, variant: 'destructive' });
+        });
         newSocket.on('disconnect', () => {
+            playError();
             toast({ title: 'Disconnected', description: 'You have been disconnected from the server.' });
             router.push('/');
         });
@@ -84,7 +106,7 @@ function RoomPageContent() {
         return () => {
             newSocket.disconnect();
         };
-    }, [roomCode, router, toast]);
+    }, [roomCode, router, toast, playMessage, playJoin, playLeave, playError, playSuccess]);
 
     const handleLeaveRoom = () => {
         socket?.emit('leave-room');
@@ -118,20 +140,29 @@ function RoomPageContent() {
         if (socket) socket.emit('insider-send-answer', { roomCode, questionId, answer });
     };
     const handleInsiderCorrectGuess = (messageId: string) => {
-        if (socket) socket.emit('insider-correct-guess', { roomCode, messageId });
+        if (socket) {
+            playSuccess();
+            socket.emit('insider-correct-guess', { roomCode, messageId });
+        }
     };
     const handleInsiderIncorrectGuess = (messageId: string) => {
-        if (socket) socket.emit('insider-incorrect-guess', { roomCode, messageId });
+        if (socket) {
+            playError();
+            socket.emit('insider-incorrect-guess', { roomCode, messageId });
+        }
     };
     const handleInsiderStartGame = (targetWord: string) => { // This is for the game panel within Insider
         if (socket && targetWord.trim()) {
+            playSuccess();
             socket.emit('insider-start-game-params', { roomCode, targetWord });
         } else {
+            playError();
             toast({ title: "Game Error", description: "Please enter a target word.", variant: "destructive" });
         }
     };
     const handleInsiderSubmitVote = (voteForNickname: string) => {
         if (socket) {
+            playMessage();
             socket.emit('insider-submit-vote', { roomCode, voteForNickname });
             toast({ title: "Vote Cast", description: `You voted for ${voteForNickname}.` });
         }
@@ -244,4 +275,3 @@ export default function RoomPage() {
         </Suspense>
     );
 }
-
