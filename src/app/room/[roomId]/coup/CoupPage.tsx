@@ -23,6 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 import type { CoupRoomState, CoupGameState, Player } from './types';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { cn } from '@/lib/utils';
 
 interface CoupPageProps {
   socket: Socket;
@@ -63,24 +64,34 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
 
     const renderInfluence = (player: Player) => {
         return player.influence.map((influence, index) => (
-            <Card 
-                key={index} 
-                className={`w-20 h-28 flex flex-col items-center justify-center text-white transition-all ${influence.isRevealed ? (cardDetails[influence.card]?.color || 'bg-gray-500') + ' opacity-50' : 'bg-zinc-600'}`}
-            >
-                {influence.isRevealed || player.id === me?.id ? (
-                    <>
-                        <VenetianMask className="w-8 h-8 mb-1" />
-                        <span className="text-xs font-bold text-center">{influence.card}</span>
-                    </>
-                ) : (
-                    <span className="text-lg font-bold text-zinc-300">?</span>
-                )}
-            </Card>
+            <div key={index} className="[perspective:1000px]">
+                <Card 
+                    className={cn(
+                        "w-20 h-28 flex flex-col items-center justify-center text-white transition-transform duration-700 [transform-style:preserve-3d]",
+                        influence.isRevealed ? '[transform:rotateY(180deg)]' : '',
+                    )}
+                >
+                    <div className="absolute inset-0 w-full h-full flex flex-col items-center justify-center bg-zinc-600 [backface-visibility:hidden]">
+                         <span className="text-lg font-bold text-zinc-300">?</span>
+                    </div>
+                    <div className={cn(
+                        "absolute inset-0 w-full h-full flex flex-col items-center justify-center text-white [transform:rotateY(180deg)] [backface-visibility:hidden]",
+                        cardDetails[influence.card]?.color || 'bg-gray-500'
+                    )}>
+                        {player.id === me?.id || influence.isRevealed ? (
+                             <>
+                                <VenetianMask className="w-8 h-8 mb-1" />
+                                <span className="text-xs font-bold text-center">{influence.card}</span>
+                            </>
+                        ) : null}
+                    </div>
+                </Card>
+            </div>
         ));
     };
 
     const renderPlayer = (player: Player, isMe: boolean) => (
-        <div key={player.id} className={`p-3 rounded-lg flex flex-col gap-2 relative border bg-card ${isMyTurn && player.id === me?.id ? 'border-primary shadow-lg' : 'border-border'} ${player.isEliminated ? 'opacity-40' : ''}`}>
+        <div key={player.id} className={`p-3 rounded-lg flex flex-col gap-2 relative border bg-card animate-fade-in ${isMyTurn && player.id === me?.id ? 'border-primary shadow-lg' : 'border-border'} ${player.isEliminated ? 'opacity-40' : ''}`}>
              {player.id === gameState.currentPlayerId && <Crown className="absolute top-2 right-2 w-5 h-5 text-amber-400" />}
             <div className="flex items-center gap-2">
                 <User className="w-5 h-5" />
@@ -336,7 +347,7 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
                 )}
                  {gameState.phase === 'game-over' && gameState.winner && (
                     <div className="absolute inset-0 bg-black/80 z-20 flex flex-col items-center justify-center gap-4 rounded-lg">
-                        <Crown className="w-24 h-24 text-amber-400"/>
+                        <Crown className="w-24 h-24 text-amber-400 animate-bounce"/>
                         <h2 className="text-4xl font-bold text-white">Game Over!</h2>
                         <p className="text-2xl text-white">{gameState.winner} is the winner!</p>
                         {isOwner && <Button onClick={onEndGame} className="mt-4">Play Again</Button>}

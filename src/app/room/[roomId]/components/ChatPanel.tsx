@@ -65,7 +65,7 @@ export default function ChatPanel({ messages, myId, myRole, gameState, onSendMes
       <ScrollArea className="flex-1 p-4">
         <div className="space-y-4">
           {messages.map(msg => (
-            <div key={msg.id}>
+            <div key={msg.id} className="animate-slide-in-from-bottom-2">
               {msg.type === 'system' ? (
                 <div className="text-center w-full my-2">
                   <p className="text-xs text-muted-foreground bg-accent/10 px-2 py-1 rounded-full inline-block">{msg.text}</p>
