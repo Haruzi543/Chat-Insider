@@ -23,8 +23,6 @@ const initialInsiderState = {
     results: null,
 };
 
-const initialCoupState = new CoupGame.CoupGame().getState();
-
 const getRoom = (roomCode) => {
     if (!rooms[roomCode]) {
         console.error(`Attempted to access non-existent room: ${roomCode}`);
@@ -212,10 +210,15 @@ app.prepare().then(() => {
             const systemMessage = { id: Date.now().toString(), user: { id: 'system', nickname: 'System' }, text: 'Insider game setup started. Owner needs to set the word and start.', timestamp: new Date().toISOString(), type: 'system' };
             room.messages.push(systemMessage);
         } else if (gameType === 'coup') {
-            room.coupGame.reset();
-            room.users.forEach(u => room.coupGame.addPlayer(u.id, u.nickname));
-            room.coupGame.startGame();
-            room.coupGame.addLog(`Coup game started by ${room.owner.nickname}`);
+            try {
+                room.coupGame.reset();
+                room.users.forEach(u => room.coupGame.addPlayer(u.id, u.nickname));
+                room.coupGame.startGame();
+                room.coupGame.addLog(`Coup game started by ${room.owner.nickname}`);
+            } catch (error) {
+                 socket.emit('error', error.message);
+                 room.activeGame = 'none'; // Revert game start on error
+            }
         }
         
         io.to(roomCode).emit('room-state', room);
@@ -295,7 +298,7 @@ app.prepare().then(() => {
       socket.on('insider-start-game-params', ({ roomCode, targetWord }) => {
           const room = getRoom(roomCode);
           if (!room || room.owner.id !== socket.id || room.activeGame !== 'insider') return;
-          if (room.users.length < 2) { 
+          if (room.users.length < 4) { 
               socket.emit('error', "You need at least 4 players to start Insider.");
               return;
           }
@@ -361,12 +364,20 @@ app.prepare().then(() => {
       });
 
       // --- Coup Listeners ---
-      socket.on('coup-action', ({ roomCode, action, targetId }) => {
+      socket.on('coup-action', ({ roomCode, action, targetId, extra }) => {
           const room = getRoom(roomCode);
           if (!room || room.activeGame !== 'coup') return;
 
           try {
-            room.coupGame.handleAction(socket.id, action, targetId);
+            const game = room.coupGame;
+            switch(action) {
+                case 'challenge': game.handleChallenge(socket.id); break;
+                case 'pass': game.pass(socket.id); break;
+                case 'block': game.handleBlock(socket.id, extra.card); break;
+                case 'reveal': game.handleReveal(socket.id, extra.card); break;
+                case 'exchange-response': game.handleExchangeResponse(socket.id, extra.cards); break;
+                default: game.handleAction(socket.id, action, targetId);
+            }
             io.to(roomCode).emit('room-state', room);
           } catch (error) {
               console.error(`Coup Error in room ${roomCode}:`, error);
@@ -434,3 +445,5 @@ app.prepare().then(() => {
     console.log(`> Ready on http://localhost:${port}`);
   });
 });
+
+    

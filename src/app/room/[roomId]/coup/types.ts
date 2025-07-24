@@ -11,12 +11,17 @@ export interface Player {
     isEliminated: boolean;
 }
 
-export type GamePhase = 'waiting' | 'turn' | 'challenge' | 'block' | 'reveal' | 'exchange' | 'game-over';
+export type GamePhase = 'waiting' | 'turn' | 'action-response' | 'block-response' | 'reveal' | 'exchange' | 'game-over';
 
 export interface Action {
     type: string;
     playerId: string;
     targetId?: string;
+    isChallengeable: boolean;
+    isBlockable: boolean;
+    claimedCard: CardName | null;
+    blockClaimedCard: CardName | null;
+    blockableBy?: CardName[];
 }
 
 export interface GameState {
@@ -26,14 +31,16 @@ export interface GameState {
     treasury: number;
     currentPlayerId: string | null;
     action: Action | null;
-    challenge?: {
-        challengerId: string;
-        isSuccessful: boolean | null;
+    challengerId: string | null;
+    blockerId: string | null;
+    revealChoice: {
+        playerId: string | null;
+        reason: 'lost-challenge' | 'assassinated' | 'coup' | null;
     };
-    block?: {
-        blockerId: string;
-        blockedWith: CardName;
-    };
+    exchangeInfo: {
+        playerId: string;
+        cards: CardName[];
+    } | null;
     winner: string | null;
     log: { id: string, message: string }[];
 }
@@ -45,3 +52,5 @@ export interface CoupRoomState {
   gameType: 'coup';
   gameState: GameState;
 }
+
+    

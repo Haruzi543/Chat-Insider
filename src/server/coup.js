@@ -19,14 +19,19 @@ class CoupGame {
 
   getInitialState() {
       return {
-        phase: 'waiting', // waiting, turn, challenge, block, reveal, exchange, game-over
+        phase: 'waiting', // waiting, turn, action-response, block-response, reveal, exchange, game-over
         players: [],
         deck: [],
         treasury: 50,
         currentPlayerId: null,
-        action: null,
-        challenge: null,
-        block: null,
+        action: null, // { type, playerId, targetId, isChallengeable, isBlockable, claimedCard, blockClaimedCard }
+        challengerId: null,
+        blockerId: null,
+        revealChoice: {
+            playerId: null,
+            reason: null, // 'lost-challenge', 'assassinated', 'coup'
+        },
+        exchangeInfo: null, // { playerId, cards }
         winner: null,
         log: [],
       }
@@ -65,17 +70,16 @@ class CoupGame {
   }
 
   removePlayer(id) {
-    const player = this.state.players.find(p => p.id === id);
-    if (!player || player.isEliminated) return;
+    const playerIndex = this.state.players.findIndex(p => p.id === id);
+    if (playerIndex === -1) return;
+    const player = this.state.players[playerIndex];
+    if (player.isEliminated) return;
 
     player.isEliminated = true;
     this.addLog(`${player.nickname} was eliminated or left.`);
     
-    // Return cards to deck
     player.influence.forEach(inf => {
-        if (!inf.isRevealed) {
-            this.state.deck.push(inf.card);
-        }
+        if (!inf.isRevealed) this.state.deck.push(inf.card);
     });
     this.state.deck = shuffle(this.state.deck);
     
@@ -101,91 +105,273 @@ class CoupGame {
     this.state.currentPlayerId = this.state.players[0].id;
     this.state.phase = 'turn';
     this.addLog("The Coup game has started!");
-    this.addLog(`It's ${this.state.players.find(p => p.id === this.state.currentPlayerId).nickname}'s turn.`);
+    this.addLog(`It's ${this.getPlayer(this.state.currentPlayerId).nickname}'s turn.`);
   }
-  
-  handleAction(playerId, actionType, targetId) {
-      if (this.state.phase === 'game-over') return;
-      const player = this.state.players.find(p => p.id === playerId);
-      if (!player || player.isEliminated) throw new Error("Player not found or is eliminated");
-      
-      // For now, only allow actions on your turn.
-      if (this.state.phase !== 'turn' || this.state.currentPlayerId !== playerId) {
-          throw new Error("It's not your turn to perform an action.");
+
+  getPlayer(id) {
+      return this.state.players.find(p => p.id === id);
+  }
+
+  handleAction(playerId, actionType, targetId = null) {
+      if (this.state.phase === 'game-over' || this.state.phase !== 'turn' || playerId !== this.state.currentPlayerId) {
+          throw new Error("Not your turn or action not allowed.");
+      }
+      const player = this.getPlayer(playerId);
+      const target = targetId ? this.getPlayer(targetId) : null;
+      if (player.isEliminated || (target && target.isEliminated)) {
+          throw new Error("Player or target is eliminated.");
       }
 
-      this.addLog(`${player.nickname} attempts to use ${actionType}${targetId ? ` on ${this.state.players.find(p=>p.id === targetId)?.nickname}` : ''}.`);
+      this.state.action = {
+          type: actionType,
+          playerId: playerId,
+          targetId: targetId,
+          isChallengeable: false,
+          isBlockable: false,
+          claimedCard: null,
+          blockClaimedCard: null
+      };
+      
+      let canProceed = true;
 
-      // This is a simplified direct-to-resolution flow. 
-      // A full implementation would set the action and enter a 'challenge/block' phase.
       switch(actionType) {
           case 'income':
-              player.coins++;
-              this.state.treasury--;
-              this.addLog(`${player.nickname} takes Income, now has ${player.coins} coins.`);
-              this.nextTurn();
+              this.addLog(`${player.nickname} takes Income.`);
+              this.resolveIncome();
               break;
           case 'foreign_aid':
-              player.coins += 2;
-              this.state.treasury -= 2;
-              this.addLog(`${player.nickname} takes Foreign Aid, now has ${player.coins} coins.`);
-              this.nextTurn();
-              break;
-          case 'tax': // Duke
-              player.coins += 3;
-              this.state.treasury -= 3;
-              this.addLog(`${player.nickname} claims Duke and takes Tax, now has ${player.coins} coins.`);
-              this.nextTurn();
+              this.state.action.isBlockable = true;
+              this.state.action.blockableBy = ['Duke'];
+              this.addLog(`${player.nickname} attempts Foreign Aid.`);
+              this.state.phase = 'action-response';
               break;
           case 'coup':
               if (player.coins < 7) throw new Error("Not enough coins for a Coup.");
-              const targetPlayerCoup = this.state.players.find(p => p.id === targetId);
-              if (!targetPlayerCoup || targetPlayerCoup.isEliminated) throw new Error("Invalid target for Coup.");
-              player.coins -= 7;
-              
-              const influenceToRevealCoup = targetPlayerCoup.influence.find(i => !i.isRevealed);
-              if (influenceToRevealCoup) {
-                  influenceToRevealCoup.isRevealed = true;
-                  this.addLog(`${player.nickname} performs a Coup on ${targetPlayerCoup.nickname}, revealing a ${influenceToRevealCoup.card}.`);
-                  this.checkIfEliminated(targetPlayerCoup);
-              }
-              this.nextTurn();
+              if (!target) throw new Error("Coup requires a target.");
+              this.addLog(`${player.nickname} launches a Coup against ${target.nickname}.`);
+              this.resolveCoup(player, target);
               break;
-        case 'steal': // Captain
-              const targetPlayerSteal = this.state.players.find(p => p.id === targetId);
-              if (!targetPlayerSteal || targetPlayerSteal.isEliminated) throw new Error("Invalid target for Steal.");
-              const stolenAmount = Math.min(targetPlayerSteal.coins, 2);
-              player.coins += stolenAmount;
-              targetPlayerSteal.coins -= stolenAmount;
-              this.addLog(`${player.nickname} claims Captain and steals ${stolenAmount} coins from ${targetPlayerSteal.nickname}.`);
-              this.nextTurn();
+          case 'tax':
+              this.state.action.isChallengeable = true;
+              this.state.action.claimedCard = 'Duke';
+              this.addLog(`${player.nickname} claims Duke to take Tax.`);
+              this.state.phase = 'action-response';
               break;
-        case 'assassinate': // Assassin
+          case 'assassinate':
               if (player.coins < 3) throw new Error("Not enough coins to Assassinate.");
-              const targetPlayerAssassinate = this.state.players.find(p => p.id === targetId);
-              if (!targetPlayerAssassinate || targetPlayerAssassinate.isEliminated) throw new Error("Invalid target for Assassination.");
-              player.coins -= 3;
-
-              const influenceToRevealAssassinate = targetPlayerAssassinate.influence.find(i => !i.isRevealed);
-               if (influenceToRevealAssassinate) {
-                  influenceToRevealAssassinate.isRevealed = true;
-                  this.addLog(`${player.nickname} claims Assassin and assassinates ${targetPlayerAssassinate.nickname}, revealing a ${influenceToRevealAssassinate.card}.`);
-                  this.checkIfEliminated(targetPlayerAssassinate);
-              }
-              this.nextTurn();
+              if (!target) throw new Error("Assassination requires a target.");
+              this.state.action.isChallengeable = true;
+              this.state.action.claimedCard = 'Assassin';
+              this.state.action.isBlockable = true;
+              this.state.action.blockableBy = ['Contessa'];
+              this.addLog(`${player.nickname} claims Assassin to assassinate ${target.nickname}.`);
+              this.state.phase = 'action-response';
+              break;
+          case 'steal':
+              if (!target) throw new Error("Steal requires a target.");
+              this.state.action.isChallengeable = true;
+              this.state.action.claimedCard = 'Captain';
+              this.state.action.isBlockable = true;
+              this.state.action.blockableBy = ['Captain', 'Ambassador'];
+              this.addLog(`${player.nickname} claims Captain to steal from ${target.nickname}.`);
+              this.state.phase = 'action-response';
+              break;
+          case 'exchange':
+              this.state.action.isChallengeable = true;
+              this.state.action.claimedCard = 'Ambassador';
+              this.addLog(`${player.nickname} claims Ambassador to exchange cards.`);
+              this.state.phase = 'action-response';
               break;
           default:
-              this.addLog(`Action ${actionType} is not fully implemented yet.`);
-              this.nextTurn();
+              throw new Error("Unknown action type.");
+      }
+  }
+
+  handleChallenge(challengerId) {
+      if (this.state.phase !== 'action-response' && this.state.phase !== 'block-response') throw new Error("Not a valid time to challenge.");
+      
+      const { action } = this.state;
+      const challenger = this.getPlayer(challengerId);
+      
+      if (this.state.phase === 'action-response') {
+          // Challenging the initial action
+          const challengedPlayer = this.getPlayer(action.playerId);
+          this.addLog(`${challenger.nickname} challenges ${challengedPlayer.nickname}'s claim of ${action.claimedCard}.`);
+          const hasCard = this.playerHasCard(challengedPlayer, action.claimedCard);
+
+          if (hasCard) {
+              this.addLog(`${challengedPlayer.nickname} reveals a ${action.claimedCard}! ${challenger.nickname} loses the challenge.`);
+              this.returnCardToDeck(challengedPlayer, action.claimedCard);
+              this.drawCard(challengedPlayer);
+              this.state.revealChoice = { playerId: challenger.id, reason: 'lost-challenge' };
+          } else {
+              this.addLog(`${challengedPlayer.nickname} does not have a ${action.claimedCard}! The challenge is successful.`);
+              this.state.action = null; // action fails
+              this.state.revealChoice = { playerId: challengedPlayer.id, reason: 'lost-challenge' };
+          }
+      } else { // 'block-response'
+          // Challenging a block
+          const challengedPlayer = this.getPlayer(this.state.blockerId);
+          this.addLog(`${challenger.nickname} challenges ${challengedPlayer.nickname}'s block claim of ${action.blockClaimedCard}.`);
+          const hasCard = this.playerHasCard(challengedPlayer, action.blockClaimedCard);
+
+          if (hasCard) {
+              this.addLog(`${challengedPlayer.nickname} reveals a ${action.blockClaimedCard}! ${challenger.nickname} loses the challenge.`);
+              this.returnCardToDeck(challengedPlayer, action.blockClaimedCard);
+              this.drawCard(challengedPlayer);
+              this.state.revealChoice = { playerId: challenger.id, reason: 'lost-challenge' };
+              // The original action is successfully blocked
+              this.state.action = null; 
+          } else {
+              this.addLog(`${challengedPlayer.nickname} does not have a ${action.blockClaimedCard}! The block fails.`);
+              this.state.revealChoice = { playerId: challengedPlayer.id, reason: 'lost-challenge' };
+              // The action will proceed after the reveal
+          }
       }
 
-      this.checkForWinner();
+      this.state.phase = 'reveal';
   }
+  
+  handleBlock(blockerId, card) {
+      if (this.state.phase !== 'action-response') throw new Error("Not a valid time to block.");
+      const { action } = this.state;
+      if (!action.isBlockable || !action.blockableBy.includes(card)) throw new Error("This action cannot be blocked with that card.");
+
+      const blocker = this.getPlayer(blockerId);
+      this.addLog(`${blocker.nickname} claims ${card} to block the action.`);
+      this.state.blockerId = blockerId;
+      this.state.action.blockClaimedCard = card;
+      this.state.phase = 'block-response';
+  }
+
+  handleReveal(playerId, cardToReveal) {
+      if (this.state.phase !== 'reveal' || this.state.revealChoice.playerId !== playerId) throw new Error("It's not your turn to reveal a card.");
+
+      const player = this.getPlayer(playerId);
+      const influence = player.influence.find(inf => inf.card === cardToReveal && !inf.isRevealed);
+      if (!influence) throw new Error("Invalid card to reveal.");
+
+      influence.isRevealed = true;
+      this.addLog(`${player.nickname} reveals a ${influence.card}.`);
+
+      this.checkIfEliminated(player);
+      this.state.revealChoice = { playerId: null, reason: null };
+
+      // After reveal, determine next step
+      if (player.isEliminated) {
+        this.checkForWinner();
+        if(this.state.winner) {
+            this.state.phase = 'game-over';
+            return;
+        }
+      }
+
+      // If the reveal was from a failed block challenge, the action now goes through
+      if (this.state.blockerId && this.getPlayer(this.state.blockerId).id === playerId && this.state.action) {
+          this.resolveAction();
+      } else if (this.state.action) { // Challenge on action was won by challenger, action failed.
+          this.nextTurn();
+      } else { // Challenge on action was lost by challenger, action proceeds. Or challenge on block was won by challenger.
+          this.resolveAction();
+      }
+  }
+
+  handleExchangeResponse(playerId, cardsToKeep) {
+    if (this.state.phase !== 'exchange' || this.state.exchangeInfo.playerId !== playerId) throw new Error("Not your turn to exchange.");
+
+    const { exchangeInfo } = this.state;
+    const player = this.getPlayer(playerId);
+    
+    const cardsToReturn = exchangeInfo.cards.filter(c => !cardsToKeep.includes(c));
+    player.influence = cardsToKeep.map(card => ({ card, isRevealed: false }));
+    this.state.deck.push(...cardsToReturn);
+    this.state.deck = shuffle(this.state.deck);
+
+    this.addLog(`${player.nickname} finishes exchanging cards.`);
+    this.state.exchangeInfo = null;
+    this.nextTurn();
+  }
+
+
+  pass(playerId) {
+      // Called when a player chooses not to challenge or block
+      if (this.state.phase === 'action-response') {
+        const activePlayers = this.state.players.filter(p => !p.isEliminated && p.id !== this.state.action.playerId);
+        // This is a simplification. In a real game, we need to track who has passed.
+        // For now, we assume if one person passes, everyone does.
+        this.addLog("No challenges or blocks. The action proceeds.");
+        this.resolveAction();
+      } else if (this.state.phase === 'block-response') {
+        this.addLog(`${this.getPlayer(this.state.action.playerId).nickname} does not challenge the block.`);
+        this.state.action = null; // Action is blocked
+        this.nextTurn();
+      }
+  }
+
+  resolveAction() {
+      const { action } = this.state;
+      if (!action) {
+          this.nextTurn();
+          return;
+      };
+      
+      const player = this.getPlayer(action.playerId);
+      const target = action.targetId ? this.getPlayer(action.targetId) : null;
+      
+      switch(action.type) {
+          case 'foreign_aid':
+              this.addLog(`${player.nickname} successfully takes Foreign Aid.`);
+              this.resolveForeignAid(player);
+              break;
+          case 'tax':
+              this.addLog(`${player.nickname}'s claim to Duke was successful.`);
+              this.resolveTax(player);
+              break;
+          case 'assassinate':
+              this.addLog(`${player.nickname}'s assassination is successful.`);
+              this.resolveAssassinate(player, target);
+              break;
+          case 'steal':
+              this.addLog(`${player.nickname}'s steal is successful.`);
+              this.resolveSteal(player, target);
+              break;
+          case 'exchange':
+              this.addLog(`${player.nickname}'s exchange is successful.`);
+              this.resolveExchange(player);
+              break;
+          default:
+              this.nextTurn();
+      }
+  }
+
+  playerHasCard(player, card) {
+      return player.influence.some(inf => inf.card === card && !inf.isRevealed);
+  }
+
+  returnCardToDeck(player, card) {
+      const influenceIndex = player.influence.findIndex(inf => inf.card === card && !inf.isRevealed);
+      if(influenceIndex > -1) {
+          const removedCard = player.influence.splice(influenceIndex, 1)[0];
+          this.state.deck.push(removedCard.card);
+          this.state.deck = shuffle(this.state.deck);
+      }
+  }
+
+  drawCard(player) {
+      if(this.state.deck.length > 0) {
+          const newCard = this.state.deck.pop();
+          player.influence.push({ card: newCard, isRevealed: false });
+      }
+  }
+
 
   checkIfEliminated(player) {
       if (player.influence.every(i => i.isRevealed)) {
           player.isEliminated = true;
           this.addLog(`${player.nickname} has been eliminated from the game.`);
+          // Return coins to treasury
+          this.state.treasury += player.coins;
+          player.coins = 0;
       }
   }
 
@@ -195,28 +381,89 @@ class CoupGame {
           this.state.winner = activePlayers[0].nickname;
           this.state.phase = 'game-over';
           this.addLog(`${this.state.winner} is the winner!`);
+          return true;
       }
+      return false;
   }
 
   nextTurn() {
-    if (this.state.phase === 'game-over') return;
-    const activePlayers = this.state.players.filter(p => !p.isEliminated);
-    if (activePlayers.length < 2) {
-        this.checkForWinner();
-        return;
-    }
+    if (this.checkForWinner()) return;
 
+    const activePlayers = this.state.players.filter(p => !p.isEliminated);
     const currentIndex = activePlayers.findIndex(p => p.id === this.state.currentPlayerId);
     const nextPlayer = activePlayers[(currentIndex + 1) % activePlayers.length];
 
     this.state.currentPlayerId = nextPlayer.id;
     this.state.phase = 'turn';
     this.state.action = null;
-    this.state.challenge = null;
-    this.state.block = null;
+    this.state.challengerId = null;
+    this.state.blockerId = null;
 
-    this.addLog(`It's now ${nextPlayer.nickname}'s turn.`);
+    const nextPlayerObj = this.getPlayer(nextPlayer.id);
+    this.addLog(`It's now ${nextPlayerObj.nickname}'s turn.`);
+    if (nextPlayerObj.coins >= 10) {
+        this.addLog(`${nextPlayerObj.nickname} has 10 or more coins and must Coup.`);
+    }
+  }
+
+  // Action Resolution functions
+  resolveIncome(player) {
+      player = player || this.getPlayer(this.state.action.playerId);
+      player.coins++;
+      this.state.treasury--;
+      this.addLog(`${player.nickname} gains 1 coin, now has ${player.coins}.`);
+      this.nextTurn();
+  }
+  
+  resolveCoup(player, target) {
+      player.coins -= 7;
+      this.addLog(`${player.nickname} pays 7 coins for the Coup.`);
+      this.state.phase = 'reveal';
+      this.state.revealChoice = { playerId: target.id, reason: 'coup' };
+  }
+
+  resolveForeignAid(player) {
+      player.coins += 2;
+      this.state.treasury -= 2;
+      this.addLog(`${player.nickname} gains 2 coins, now has ${player.coins}.`);
+      this.nextTurn();
+  }
+
+  resolveTax(player) {
+      player.coins += 3;
+      this.state.treasury -= 3;
+      this.addLog(`${player.nickname} gains 3 coins, now has ${player.coins}.`);
+      this.nextTurn();
+  }
+
+  resolveAssassinate(player, target) {
+      player.coins -= 3;
+      this.addLog(`${player.nickname} pays 3 coins to assassinate.`);
+      this.state.phase = 'reveal';
+      this.state.revealChoice = { playerId: target.id, reason: 'assassinated' };
+  }
+
+  resolveSteal(player, target) {
+      const stolenAmount = Math.min(target.coins, 2);
+      player.coins += stolenAmount;
+      target.coins -= stolenAmount;
+      this.addLog(`${player.nickname} steals ${stolenAmount} coins from ${target.nickname}.`);
+      this.nextTurn();
+  }
+
+  resolveExchange(player) {
+      const drawnCards = [this.state.deck.pop(), this.state.deck.pop()].filter(Boolean);
+      this.addLog(`${player.nickname} draws ${drawnCards.length} card(s) from the deck.`);
+      const currentInfluence = player.influence.filter(i => !i.isRevealed).map(i => i.card);
+      
+      this.state.phase = 'exchange';
+      this.state.exchangeInfo = {
+          playerId: player.id,
+          cards: [...currentInfluence, ...drawnCards],
+      };
   }
 }
 
 module.exports = { CoupGame };
+
+    

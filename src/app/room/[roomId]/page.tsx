@@ -119,8 +119,8 @@ export default function RoomPage() {
     };
 
     // ===== Coup Handlers =====
-    const handleCoupAction = (action: string, targetId?: string) => {
-        if(socket) socket.emit('coup-action', { roomCode, action, targetId });
+    const handleCoupAction = (action: string, targetId?: string, extra?: any) => {
+        if(socket) socket.emit('coup-action', { roomCode, action, targetId, extra });
     };
 
     const myInsiderRole = useMemo(() => {
@@ -210,3 +210,5 @@ export default function RoomPage() {
         </>
     )
 }
+
+    
