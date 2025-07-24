@@ -140,45 +140,45 @@ const socketHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
     socket.on('join-room', ({ roomCode, nickname }, callback) => {
         let room = rooms[roomCode];
         
+        // Scenario 1: Room exists
         if (room) {
-            // Room exists, handle joining
-            if (room.users.some(user => user.nickname.toLowerCase() === nickname.toLowerCase() && user.id !== socket.id)) {
+            const existingUser = room.users.find(u => u.id === socket.id);
+            const isNicknameTaken = room.users.some(u => u.id !== socket.id && u.nickname.toLowerCase() === nickname.toLowerCase());
+
+            if (isNicknameTaken) {
                 return callback({ error: 'Nickname is already taken.' });
             }
-
-            const userInRoom = room.users.find(u => u.id === socket.id);
-            if (userInRoom) {
-                // User is rejoining or changing nickname
-                const oldNickname = userInRoom.nickname;
-                if(oldNickname.toLowerCase() !== nickname.toLowerCase()){
-                  userInRoom.nickname = nickname;
-                  if (room.owner.id === socket.id) {
-                      room.owner.nickname = nickname;
-                  }
-                  const systemMessage: Message = {
-                      id: Date.now().toString(),
-                      user: { id: 'system', nickname: 'System' },
-                      text: `${oldNickname} is now known as ${nickname}.`,
-                      timestamp: new Date().toISOString(),
-                      type: 'system',
-                  };
-                  room.messages.push(systemMessage);
+            
+            if (existingUser) { // User is rejoining
+                if (existingUser.nickname !== nickname) {
+                    const oldNickname = existingUser.nickname;
+                    existingUser.nickname = nickname;
+                     if (room.owner.id === socket.id) {
+                        room.owner.nickname = nickname;
+                    }
+                    const systemMessage: Message = {
+                        id: Date.now().toString(),
+                        user: { id: 'system', nickname: 'System' },
+                        text: `${oldNickname} is now known as ${nickname}.`,
+                        timestamp: new Date().toISOString(),
+                        type: 'system',
+                    };
+                    room.messages.push(systemMessage);
                 }
-            } else {
-                // New user joins an existing room
+            } else { // New user is joining
                 const newUser = { id: socket.id, nickname };
                 room.users.push(newUser);
                 const systemMessage: Message = {
                     id: Date.now().toString(),
                     user: { id: 'system', nickname: 'System' },
                     text: `${nickname} has joined the room.`,
-                    timestamp: new new Date().toISOString(),
+                    timestamp: new Date().toISOString(),
                     type: 'system',
                 };
                 room.messages.push(systemMessage);
             }
         } else {
-            // Room does not exist, create it
+            // Scenario 2: Room does not exist, create it
             const owner = { id: socket.id, nickname };
             room = {
                 id: roomCode,
