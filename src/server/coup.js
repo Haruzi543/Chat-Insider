@@ -19,7 +19,7 @@ class CoupGame {
 
   getInitialState() {
       return {
-        phase: 'waiting', // waiting, turn, action-response, block-response, reveal, exchange, game-over
+        phase: 'waiting', // waiting, turn, action-response, block-response, reveal, exchange, game-over, paused
         players: [],
         deck: [],
         treasury: 50,
@@ -34,6 +34,8 @@ class CoupGame {
         exchangeInfo: null, // { playerId, cards }
         winner: null,
         log: [],
+        paused: false,
+        pausedState: null,
       }
   }
 
@@ -108,12 +110,30 @@ class CoupGame {
     this.addLog(`It's ${this.getPlayer(this.state.currentPlayerId).nickname}'s turn.`);
   }
 
+  pause() {
+    if (this.state.phase !== 'game-over' && !this.state.paused) {
+      this.state.pausedState = this.state.phase;
+      this.state.phase = 'paused';
+      this.state.paused = true;
+      this.addLog('The game has been paused.');
+    }
+  }
+
+  resume() {
+    if (this.state.paused) {
+      this.state.phase = this.state.pausedState;
+      this.state.pausedState = null;
+      this.state.paused = false;
+      this.addLog('The game has been resumed.');
+    }
+  }
+
   getPlayer(id) {
       return this.state.players.find(p => p.id === id);
   }
 
   handleAction(playerId, actionType, targetId = null) {
-      if (this.state.phase === 'game-over' || this.state.phase !== 'turn' || playerId !== this.state.currentPlayerId) {
+      if (this.state.paused || this.state.phase === 'game-over' || this.state.phase !== 'turn' || playerId !== this.state.currentPlayerId) {
           throw new Error("Not your turn or action not allowed.");
       }
       const player = this.getPlayer(playerId);
@@ -190,7 +210,7 @@ class CoupGame {
   }
 
   handleChallenge(challengerId) {
-      if (this.state.phase !== 'action-response' && this.state.phase !== 'block-response') throw new Error("Not a valid time to challenge.");
+      if (this.state.paused || (this.state.phase !== 'action-response' && this.state.phase !== 'block-response')) throw new Error("Not a valid time to challenge.");
       
       const { action } = this.state;
       const challenger = this.getPlayer(challengerId);
@@ -236,7 +256,7 @@ class CoupGame {
   }
   
   handleBlock(blockerId, card) {
-      if (this.state.phase !== 'action-response') throw new Error("Not a valid time to block.");
+      if (this.state.paused || this.state.phase !== 'action-response') throw new Error("Not a valid time to block.");
       const { action } = this.state;
       if (!action.isBlockable || !action.blockableBy.includes(card)) throw new Error("This action cannot be blocked with that card.");
 
@@ -248,7 +268,7 @@ class CoupGame {
   }
 
   handleReveal(playerId, cardToReveal) {
-      if (this.state.phase !== 'reveal' || this.state.revealChoice.playerId !== playerId) throw new Error("It's not your turn to reveal a card.");
+      if (this.state.paused || this.state.phase !== 'reveal' || this.state.revealChoice.playerId !== playerId) throw new Error("It's not your turn to reveal a card.");
 
       const player = this.getPlayer(playerId);
       const influence = player.influence.find(inf => inf.card === cardToReveal && !inf.isRevealed);
@@ -291,7 +311,7 @@ class CoupGame {
   }
 
   handleExchangeResponse(playerId, cardsToKeep) {
-    if (this.state.phase !== 'exchange' || this.state.exchangeInfo.playerId !== playerId) throw new Error("Not your turn to exchange.");
+    if (this.state.paused || this.state.phase !== 'exchange' || this.state.exchangeInfo.playerId !== playerId) throw new Error("Not your turn to exchange.");
 
     const { exchangeInfo } = this.state;
     const player = this.getPlayer(playerId);
@@ -319,7 +339,7 @@ class CoupGame {
 
 
   pass(playerId) {
-      if (this.state.phase !== 'action-response' && this.state.phase !== 'block-response') return;
+      if (this.state.paused || (this.state.phase !== 'action-response' && this.state.phase !== 'block-response')) return;
       // This is a simplification. In a real game, we need to track who has passed.
       // For now, we assume if one person passes, everyone does.
       if (this.state.phase === 'action-response') {
@@ -514,5 +534,3 @@ class CoupGame {
 }
 
 module.exports = { CoupGame };
-
-    

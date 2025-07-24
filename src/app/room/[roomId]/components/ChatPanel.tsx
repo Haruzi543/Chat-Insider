@@ -7,13 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Send, Check } from 'lucide-react';
-import type { GameState, Message, Player } from '../insider/types';
+import type { InsiderGameState, Message, Player } from '../insider/types';
 
 interface ChatPanelProps {
   messages: Message[];
   myId: string;
   myRole?: Player['role'] | null;
-  gameState?: GameState;
+  gameState?: InsiderGameState;
   onSendMessage: (message: string) => void;
   onSendAnswer?: (questionId: string, answer: string) => void;
   onCorrectGuess?: (messageId: string) => void;
@@ -56,6 +56,8 @@ export default function ChatPanel({ messages, myId, myRole, gameState, onSendMes
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  const isGamePaused = gameState?.paused ?? false;
   
   return (
     <>
@@ -102,11 +104,12 @@ export default function ChatPanel({ messages, myId, myRole, gameState, onSendMes
           <Input 
             value={message} 
             onChange={e => setMessage(e.target.value)} 
-            placeholder={gameState?.phase === 'questioning' ? "Type [guess] YourGuess to submit an answer" : "Type a message..."} 
+            placeholder={isGamePaused ? "Game is paused..." : (gameState?.phase === 'questioning' ? "Type [guess] YourGuess to submit an answer" : "Type a message...")} 
             maxLength={200} 
-            autoComplete="off" 
+            autoComplete="off"
+            disabled={isGamePaused}
           />
-          <Button type="submit" size="icon" disabled={!message.trim()}>
+          <Button type="submit" size="icon" disabled={!message.trim() || isGamePaused}>
             <Send className="h-4 w-4" />
           </Button>
         </form>

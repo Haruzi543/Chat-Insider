@@ -6,10 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Gamepad2, Eye } from 'lucide-react';
-import type { GameState, User, Player } from '../insider/types';
+import type { InsiderGameState, User, Player } from '../insider/types';
 
 interface GamePanelProps {
-  gameState: GameState;
+  gameState: InsiderGameState;
   isOwner: boolean;
   users: User[];
   myId: string;
@@ -23,14 +23,25 @@ export default function GamePanel({ gameState, isOwner, users, myId, myRole, onS
   const [gameTimer, setGameTimer] = useState(0);
 
   useEffect(() => {
-    if (gameState.isActive && gameState.timer && gameState.timer > 0) {
-      setGameTimer(gameState.timer);
-      const interval = setInterval(() => {
-        setGameTimer(prev => (prev > 0 ? prev - 1 : 0));
-      }, 1000);
+    if (gameState.isActive && !gameState.paused && gameState.timer && gameState.timer > 0) {
+      // Calculate remaining time considering pauses
+      const startTime = Date.now();
+      const initialRemainingTime = (gameState.timer * 1000) - (gameState.totalPausedTime || 0);
+
+      const updateTimer = () => {
+          const elapsed = Date.now() - startTime;
+          const remaining = Math.max(0, initialRemainingTime - elapsed);
+          setGameTimer(Math.ceil(remaining / 1000));
+      };
+      
+      updateTimer();
+      const interval = setInterval(updateTimer, 1000);
       return () => clearInterval(interval);
+    } else if (gameState.paused && gameState.timer) {
+       const remaining = (gameState.timer * 1000) - (gameState.totalPausedTime || 0);
+       setGameTimer(Math.ceil(remaining/1000));
     }
-  }, [gameState.isActive, gameState.timer, gameState.phase]);
+  }, [gameState.isActive, gameState.timer, gameState.phase, gameState.paused, gameState.totalPausedTime]);
 
   const formatTime = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
@@ -105,4 +116,3 @@ export default function GamePanel({ gameState, isOwner, users, myId, myRole, onS
     </Card>
   );
 }
-

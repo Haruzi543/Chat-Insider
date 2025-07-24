@@ -1,5 +1,4 @@
 
-
 export interface User {
   id: string;
   nickname: string;
@@ -20,9 +19,11 @@ export interface Player extends User {
   role: PlayerRole | null;
 }
 
+export type InsiderGamePhase = 'setup' | 'questioning' | 'voting' | 'results' | 'paused';
+
 export interface InsiderGameState {
   isActive: boolean;
-  phase: 'setup' | 'questioning' | 'voting' | 'results';
+  phase: InsiderGamePhase;
   targetWord?: string;
   players?: Player[];
   timer?: number;
@@ -32,6 +33,10 @@ export interface InsiderGameState {
     wasInsiderFound: boolean;
     wasWordGuessed: boolean;
   };
+  paused: boolean;
+  pausedState: InsiderGamePhase | null;
+  pauseStartTime: number;
+  totalPausedTime: number;
 }
 
 export interface InsiderRoomState {
@@ -43,5 +48,3 @@ export interface InsiderRoomState {
   insiderGame: InsiderGameState;
   coupGame: any; // Placeholder
 }
-
-    

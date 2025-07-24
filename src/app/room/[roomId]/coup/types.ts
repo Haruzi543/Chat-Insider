@@ -11,7 +11,7 @@ export interface Player {
     isEliminated: boolean;
 }
 
-export type GamePhase = 'waiting' | 'turn' | 'action-response' | 'block-response' | 'reveal' | 'exchange' | 'game-over';
+export type GamePhase = 'waiting' | 'turn' | 'action-response' | 'block-response' | 'reveal' | 'exchange' | 'game-over' | 'paused';
 
 export interface Action {
     type: string;
@@ -43,6 +43,8 @@ export interface CoupGameState {
     } | null;
     winner: string | null;
     log: { id: string, message: string }[];
+    paused: boolean;
+    pausedState: GamePhase | null;
 }
 
 export interface CoupRoomState {
@@ -54,5 +56,3 @@ export interface CoupRoomState {
   messages: any[]; // Assuming messages can be generic for now
   insiderGame: any; // Placeholder
 }
-
-    

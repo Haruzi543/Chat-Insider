@@ -96,6 +96,14 @@ export default function RoomPage() {
     const handleEndGame = () => {
         if (socket) socket.emit('end-game', { roomCode });
     };
+
+    const handlePauseGame = () => {
+        if (socket) socket.emit('pause-game', { roomCode });
+    }
+
+    const handleResumeGame = () => {
+        if (socket) socket.emit('resume-game', { roomCode });
+    }
     
     // ===== Insider Handlers =====
     const handleInsiderSendAnswer = (questionId: string, answer: string) => {
@@ -157,6 +165,8 @@ export default function RoomPage() {
                     onSendAnswer={handleInsiderSendAnswer}
                     onCorrectGuess={handleInsiderCorrectGuess}
                     onSubmitVote={handleInsiderSubmitVote}
+                    onPause={handlePauseGame}
+                    onResume={handleResumeGame}
                 />;
             case 'coup':
                  return <CoupPage
@@ -166,6 +176,8 @@ export default function RoomPage() {
                     isOwner={isOwner}
                     onLeaveRoom={handleLeaveRoom}
                     onGameAction={handleCoupAction}
+                    onPause={handlePauseGame}
+                    onResume={handleResumeGame}
                 />;
             default:
                 // No game is active, show a lobby / chat view
@@ -210,5 +222,3 @@ export default function RoomPage() {
         </>
     )
 }
-
-    

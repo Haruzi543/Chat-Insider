@@ -5,7 +5,7 @@ import { useState, useMemo } from 'react';
 import type { Socket } from 'socket.io-client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { User, Shield, Swords, DollarSign, Crown, Users, LogOut, VenetianMask, HelpCircle } from 'lucide-react';
+import { User, Shield, Swords, DollarSign, Crown, Users, LogOut, VenetianMask, HelpCircle, Pause, Play } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,6 +31,8 @@ interface CoupPageProps {
   isOwner: boolean;
   onLeaveRoom: () => void;
   onGameAction: (action: string, targetId?: string, extra?: any) => void;
+  onPause: () => void;
+  onResume: () => void;
 }
 
 const cardDetails = {
@@ -41,7 +43,7 @@ const cardDetails = {
     'Ambassador': { description: 'Exchange cards with deck. Block stealing.', color: 'bg-green-600' },
 };
 
-export default function CoupPage({ socket, roomState, onLeaveRoom, onGameAction }: CoupPageProps) {
+export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onGameAction, onPause, onResume }: CoupPageProps) {
     const gameState = roomState.coupGame;
     const me = gameState.players.find(p => p.id === socket.id);
     const otherPlayers = gameState.players.filter(p => p.id !== socket.id);
@@ -241,10 +243,28 @@ export default function CoupPage({ socket, roomState, onLeaveRoom, onGameAction 
                 <div className="flex items-center gap-4">
                     <h1 className="text-2xl font-bold text-primary">Coup</h1>
                 </div>
-                <Button onClick={onLeaveRoom} variant="outline" size="sm"><LogOut className="mr-2"/> Leave</Button>
+                 <div className="flex items-center gap-2">
+                    {isOwner && (
+                        <>
+                        {gameState.paused ? (
+                            <Button onClick={onResume} variant="outline" size="sm"><Play className="mr-2"/> Resume</Button>
+                        ) : (
+                            <Button onClick={onPause} variant="outline" size="sm"><Pause className="mr-2"/> Pause</Button>
+                        )}
+                        </>
+                    )}
+                    <Button onClick={onLeaveRoom} variant="outline" size="sm"><LogOut className="mr-2"/> Leave</Button>
+                </div>
             </header>
             
-            <main className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1 overflow-hidden">
+            <main className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1 overflow-hidden relative">
+                {gameState.paused && (
+                    <div className="absolute inset-0 bg-black/70 z-20 flex flex-col items-center justify-center gap-4">
+                        <Pause className="w-16 h-16 text-white"/>
+                        <h2 className="text-3xl font-bold text-white">Game Paused</h2>
+                        {isOwner && <Button onClick={onResume}><Play className="mr-2"/>Resume Game</Button>}
+                    </div>
+                )}
                 {/* Players */}
                 <div className="md:col-span-2 flex flex-col gap-4 overflow-y-auto pr-2">
                     <Card>
@@ -327,5 +347,3 @@ export default function CoupPage({ socket, roomState, onLeaveRoom, onGameAction 
         </div>
     );
 }
-
-    
