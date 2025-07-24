@@ -242,15 +242,9 @@ class CoupGame {
               this.state.revealChoice = { playerId: challenger.id, reason: 'lost-challenge' };
           } else {
               this.addLog(`${challengedPlayer.nickname} does not have a ${action.claimedCard}! The challenge is successful.`);
-              const revealedInfluence = challengedPlayer.influence.find(inf => !inf.isRevealed);
-              if(revealedInfluence) {
-                revealedInfluence.isRevealed = true;
-                this.addLog(`${challengedPlayer.nickname} loses an influence, revealing a ${revealedInfluence.card}.`);
-                this.checkIfEliminated(challengedPlayer);
-              }
-              this.state.action = null; // action fails
-              this.nextTurn();
-              return;
+              // Action is cancelled, and challenged player loses influence
+              this.state.action = null; 
+              this.state.revealChoice = { playerId: challengedPlayer.id, reason: 'lost-challenge' };
           }
       } else { // 'block-response'
           // Challenging a block
@@ -355,6 +349,10 @@ class CoupGame {
         }
     });
 
+    if(newInfluence.length !== influenceCount) {
+      throw new Error("Error processing cards to keep.");
+    }
+
     player.influence = [...player.influence.filter(i => i.isRevealed), ...newInfluence];
     this.state.deck.push(...tempDeck);
     this.state.deck = shuffle(this.state.deck);
@@ -373,9 +371,19 @@ class CoupGame {
           return; // Don't allow passing twice or if eliminated
       }
 
-       // The acting player cannot pass their own action resolution
-      if (this.state.phase === 'action-response' && playerId === this.state.action.playerId) {
-          return;
+      if (this.state.phase === 'action-response') {
+        // The acting player cannot pass their own action resolution
+        if (playerId === this.state.action.playerId) {
+            return;
+        }
+        // A player cannot pass if they are not the target of a steal/assassinate action
+        if (this.state.action.targetId && this.state.action.targetId !== playerId && this.state.action.isBlockable){
+          const isEveryoneElse = this.state.players.every(p => {
+            if(p.id === this.state.action.playerId || p.id === this.state.action.targetId) return true;
+            return this.state.respondedPlayerIds.includes(p.id) || p.isEliminated;
+          });
+          if(!isEveryoneElse) return;
+        }
       }
       
       this.state.respondedPlayerIds.push(playerId);
@@ -572,14 +580,19 @@ class CoupGame {
   }
 
   resolveExchange(player) {
-      const drawnCards = [this.state.deck.pop(), this.state.deck.pop()].filter(Boolean);
-      if (this.state.deck.length < 2) {
-          this.addLog('Not enough cards in deck to exchange.');
-          this.nextTurn();
-          return;
+      const cardsToDraw = Math.min(2, this.state.deck.length);
+      if (cardsToDraw === 0) {
+        this.addLog('The deck is empty. Cannot exchange.');
+        this.nextTurn();
+        return;
       }
 
-      this.addLog(`${player.nickname} draws 2 cards from the deck.`);
+      const drawnCards = [];
+      for(let i=0; i<cardsToDraw; i++){
+        drawnCards.push(this.state.deck.pop());
+      }
+      
+      this.addLog(`${player.nickname} draws ${cardsToDraw} card(s) from the deck.`);
       const currentInfluence = player.influence.filter(i => !i.isRevealed).map(i => i.card);
       
       this.state.phase = 'exchange';
