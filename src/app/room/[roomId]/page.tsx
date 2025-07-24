@@ -62,13 +62,7 @@ function RoomPageContent() {
         });
 
         newSocket.on('room-state', (state: GenericRoomState) => {
-            const sanitizedState = {
-                ...state,
-                coupGame: state.coupGame && typeof state.coupGame.getState === 'function' 
-                    ? state.coupGame.getState() 
-                    : state.coupGame,
-            };
-            setRoomState(sanitizedState);
+            setRoomState(state);
         });
         
         newSocket.on('new-message', (newMessage: InsiderMessage) => {
@@ -190,7 +184,6 @@ function RoomPageContent() {
     }
 
     const isOwner = socket.id === roomState.owner.id;
-    const coupGameState = roomState.coupGame;
 
     const renderGameContent = () => {
         switch (roomState.activeGame) {
@@ -216,7 +209,7 @@ function RoomPageContent() {
                  return <CoupPage
                     socket={socket}
                     roomCode={roomCode}
-                    roomState={{...roomState, coupGame: coupGameState}}
+                    roomState={{...roomState, coupGame: roomState.coupGame}}
                     isOwner={isOwner}
                     onLeaveRoom={handleLeaveRoom}
                     onEndGame={handleEndGame}
