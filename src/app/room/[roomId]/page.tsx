@@ -36,7 +36,7 @@ export default function RoomPage() {
         }
 
         // Ensure this runs only on the client-side
-        const socketUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
+        const socketUrl = window.location.origin;
         const newSocket = io(socketUrl, {
             path: "/api/socket_io",
             addTrailingSlash: false,
