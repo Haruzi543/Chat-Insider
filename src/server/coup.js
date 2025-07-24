@@ -345,20 +345,27 @@ class CoupGame {
     const influenceCount = player.influence.filter(i => !i.isRevealed).length;
     if (cardsToKeep.length !== influenceCount) throw new Error(`You must keep ${influenceCount} card(s).`);
 
-    const tempDeck = [...exchangeInfo.cards];
+    const allCards = [...exchangeInfo.cards];
     const newInfluence = [];
+    const returnedCards = [];
     
-    cardsToKeep.forEach(card => {
-        const index = tempDeck.indexOf(card);
-        if (index > -1) {
-            newInfluence.push({ card: tempDeck.splice(index, 1)[0], isRevealed: false });
-        }
-    });
+    // Create a copy to mutate
+    let tempAllCards = [...allCards];
 
-    player.influence = [...player.influence.filter(i => i.isRevealed), ...newInfluence];
-    this.state.deck.push(...tempDeck);
+    // Select the cards to keep
+    for (const card of cardsToKeep) {
+        const index = tempAllCards.indexOf(card);
+        if (index > -1) {
+            newInfluence.push({ card: tempAllCards.splice(index, 1)[0], isRevealed: false });
+        }
+    }
+    
+    // Whatever is left in tempAllCards is returned to the deck
+    this.state.deck.push(...tempAllCards);
     this.state.deck = shuffle(this.state.deck);
 
+    player.influence = [...player.influence.filter(i => i.isRevealed), ...newInfluence];
+    
     this.addLog(`${player.nickname} finishes exchanging cards.`);
     this.state.exchangeInfo = null;
     this.nextTurn();
@@ -572,14 +579,14 @@ class CoupGame {
   }
 
   resolveExchange(player) {
-      const drawnCards = [this.state.deck.pop(), this.state.deck.pop()].filter(Boolean);
       if (this.state.deck.length < 2) {
-          this.addLog('Not enough cards in deck to exchange.');
+          this.addLog('Not enough cards in deck to exchange. Action fails.');
           this.nextTurn();
           return;
       }
-
+      const drawnCards = [this.state.deck.pop(), this.state.deck.pop()];
       this.addLog(`${player.nickname} draws 2 cards from the deck.`);
+      
       const currentInfluence = player.influence.filter(i => !i.isRevealed).map(i => i.card);
       
       this.state.phase = 'exchange';
