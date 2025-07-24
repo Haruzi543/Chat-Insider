@@ -147,9 +147,9 @@ export default function CoupPage({ socket, roomState, isOwner, onLeaveRoom, onEn
                                 {canBlock && blockCards?.map(card => <Button key={card} variant="secondary" onClick={() => onGameAction('block', undefined, { card })}>Block with {card}</Button>)}
                                 <Button onClick={() => onGameAction('pass')}>Pass</Button>
                             </>
-                        ) : !isMyAction && (
+                        ) : (!isMyAction && haveIResponded) ? (
                             <p className="text-sm text-muted-foreground">You have passed. Waiting for others...</p>
-                        )}
+                        ) : null}
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>

@@ -236,7 +236,7 @@ class CoupGame {
           const hasCard = this.playerHasCard(challengedPlayer, action.claimedCard);
 
           if (hasCard) {
-              this.addLog(`${challengedPlayer.nickname} reveals a ${action.claimedCard}! ${challenger.nickname} loses the challenge.`);
+              this.addLog(`${challengedPlayer.nickname} proves they have a ${action.claimedCard}! ${challenger.nickname} loses the challenge.`);
               this.returnCardToDeck(challengedPlayer, action.claimedCard);
               this.drawCard(challengedPlayer);
               this.state.revealChoice = { playerId: challenger.id, reason: 'lost-challenge' };
@@ -261,7 +261,7 @@ class CoupGame {
           const hasCard = this.playerHasCard(challengedPlayer, action.blockClaimedCard);
 
           if (hasCard) {
-              this.addLog(`${challengedPlayer.nickname} reveals a ${action.blockClaimedCard}! ${challenger.nickname} loses the challenge.`);
+              this.addLog(`${challengedPlayer.nickname} proves they have a ${action.blockClaimedCard}! ${challenger.nickname} loses the challenge.`);
               this.returnCardToDeck(challengedPlayer, action.blockClaimedCard);
               this.drawCard(challengedPlayer);
               // The original action is successfully blocked
@@ -373,6 +373,11 @@ class CoupGame {
           return; // Don't allow passing twice or if eliminated
       }
 
+       // The acting player cannot pass their own action resolution
+      if (this.state.phase === 'action-response' && playerId === this.state.action.playerId) {
+          return;
+      }
+      
       this.state.respondedPlayerIds.push(playerId);
       this.addLog(`${player.nickname} passes.`);
 
