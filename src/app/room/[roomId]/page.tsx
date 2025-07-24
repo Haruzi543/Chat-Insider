@@ -13,7 +13,7 @@ import { Separator } from '@/components/ui/separator';
 
 import type { RoomState as GenericRoomState } from './types';
 import type { InsiderRoomState, InsiderGameState, Message as InsiderMessage, Player as InsiderPlayer } from './insider/types';
-import type { CoupRoomState } from './coup/types';
+import type { CoupRoomState, CoupGameState } from './coup/types';
 
 import UserListPanel from './components/UserListPanel';
 import GameControlPanel from './components/GameControlPanel';
@@ -172,7 +172,7 @@ export default function RoomPage() {
                  return <CoupPage
                     socket={socket}
                     roomCode={roomCode}
-                    roomState={roomState as CoupRoomState}
+                    roomState={{...roomState, coupGame: roomState.coupGame as CoupGameState}}
                     isOwner={isOwner}
                     onLeaveRoom={handleLeaveRoom}
                     onEndGame={handleEndGame}

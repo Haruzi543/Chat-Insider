@@ -21,6 +21,10 @@ const initialInsiderState = {
     timer: 0,
     votes: {},
     results: null,
+    paused: false,
+    pausedState: null,
+    pauseStartTime: 0,
+    totalPausedTime: 0,
 };
 
 const getRoom = (roomCode) => {
@@ -29,6 +33,16 @@ const getRoom = (roomCode) => {
     }
     return rooms[roomCode];
 };
+
+const getSanitizedRoom = (room) => {
+    if (!room) return null;
+    const sanitizedRoom = { ...room };
+    if (sanitizedRoom.coupGame instanceof CoupGame) {
+        sanitizedRoom.coupGame = sanitizedRoom.coupGame.getState();
+    }
+    return sanitizedRoom;
+};
+
 
 // --- Insider Game Logic ---
 
@@ -90,7 +104,7 @@ const advanceInsiderGameState = (io, roomCode) => {
         io.to(roomCode).emit('new-message', systemMessage);
     }
     
-    io.to(roomCode).emit('room-state', room);
+    io.to(roomCode).emit('room-state', getSanitizedRoom(room));
 };
 
 const assignInsiderRoles = (playersList) => {
@@ -172,8 +186,8 @@ app.prepare().then(() => {
 
         socket.join(roomCode);
         
-        io.to(roomCode).emit('room-state', room);
-        callback({ roomState: room });
+        io.to(roomCode).emit('room-state', getSanitizedRoom(room));
+        callback({ roomState: getSanitizedRoom(room) });
       });
       
       socket.on('send-message', ({ roomCode, message }) => {
@@ -221,7 +235,7 @@ app.prepare().then(() => {
             }
         }
         
-        io.to(roomCode).emit('room-state', room);
+        io.to(roomCode).emit('room-state', getSanitizedRoom(room));
       });
 
       socket.on('end-game', ({ roomCode }) => {
@@ -236,13 +250,61 @@ app.prepare().then(() => {
         const systemMessage = { id: Date.now().toString(), user: { id: 'system', nickname: 'System' }, text: `The ${endedGame} game has ended.`, timestamp: new Date().toISOString(), type: 'system' };
         room.messages.push(systemMessage);
 
-        io.to(roomCode).emit('room-state', room);
+        io.to(roomCode).emit('room-state', getSanitizedRoom(room));
       });
+
+       socket.on('pause-game', ({ roomCode }) => {
+            const room = getRoom(roomCode);
+            if (!room || room.owner.id !== socket.id) return;
+
+            if (room.activeGame === 'insider' && room.insiderGame.isActive && !room.insiderGame.paused) {
+                if (roomTimers[roomCode]) clearTimeout(roomTimers[roomCode]);
+                room.insiderGame.paused = true;
+                room.insiderGame.pauseStartTime = Date.now();
+                room.insiderGame.pausedState = room.insiderGame.phase;
+                room.insiderGame.phase = 'paused';
+                const systemMessage = { id: Date.now().toString(), user: { id: 'system', nickname: 'System' }, text: `The Insider game has been paused.`, timestamp: new Date().toISOString(), type: 'system' };
+                room.messages.push(systemMessage);
+                io.to(roomCode).emit('new-message', systemMessage);
+            } else if (room.activeGame === 'coup') {
+                room.coupGame.pause();
+            }
+            io.to(roomCode).emit('room-state', getSanitizedRoom(room));
+        });
+
+        socket.on('resume-game', ({ roomCode }) => {
+            const room = getRoom(roomCode);
+            if (!room || room.owner.id !== socket.id) return;
+            
+            if (room.activeGame === 'insider' && room.insiderGame.isActive && room.insiderGame.paused) {
+                room.insiderGame.paused = false;
+                room.insiderGame.totalPausedTime += Date.now() - room.insiderGame.pauseStartTime;
+                room.insiderGame.phase = room.insiderGame.pausedState;
+                room.insiderGame.pausedState = null;
+
+                const remainingTime = (room.insiderGame.timer * 1000) - (room.insiderGame.pauseStartTime - room.insiderGame.totalPausedTime - (Date.now() - room.insiderGame.totalPausedTime));
+                
+                if (room.insiderGame.phase === 'questioning' || room.insiderGame.phase === 'voting') {
+                     const resumeTime = room.insiderGame.timer - Math.floor(room.insiderGame.totalPausedTime / 1000);
+                     const timeout = (room.insiderGame.timer * 1000) - (Date.now() - room.insiderGame.pauseStartTime) + room.insiderGame.totalPausedTime;
+                     if(roomTimers[roomCode]) clearTimeout(roomTimers[roomCode]);
+                     roomTimers[roomCode] = setTimeout(() => advanceInsiderGameState(io, roomCode), timeout > 0 ? timeout : 0);
+                }
+
+                const systemMessage = { id: Date.now().toString(), user: { id: 'system', nickname: 'System' }, text: `The Insider game has been resumed.`, timestamp: new Date().toISOString(), type: 'system' };
+                room.messages.push(systemMessage);
+                io.to(roomCode).emit('new-message', systemMessage);
+
+            } else if (room.activeGame === 'coup') {
+                room.coupGame.resume();
+            }
+            io.to(roomCode).emit('room-state', getSanitizedRoom(room));
+        });
       
       // --- Insider Listeners ---
       socket.on('insider-send-answer', ({ roomCode, questionId, answer }) => {
         const room = getRoom(roomCode);
-        if (!room || room.activeGame !== 'insider' || !room.insiderGame.isActive || room.insiderGame.phase !== 'questioning') return;
+        if (!room || room.activeGame !== 'insider' || !room.insiderGame.isActive || room.insiderGame.phase !== 'questioning' || room.insiderGame.paused) return;
 
         const master = room.insiderGame.players?.find(p => p.role === 'Master');
         if (!master || master.id !== socket.id) return;
@@ -259,12 +321,12 @@ app.prepare().then(() => {
         };
         room.messages.push(answerMessage);
         io.to(roomCode).emit('new-message', answerMessage);
-        io.to(roomCode).emit('room-state', room); // To update message list immediately
+        io.to(roomCode).emit('room-state', getSanitizedRoom(room)); // To update message list immediately
       });
 
       socket.on('insider-correct-guess', ({ roomCode, messageId }) => {
         const room = getRoom(roomCode);
-        if (!room || room.activeGame !== 'insider' || !room.insiderGame.isActive || room.insiderGame.phase !== 'questioning') return;
+        if (!room || room.activeGame !== 'insider' || !room.insiderGame.isActive || room.insiderGame.phase !== 'questioning' || room.insiderGame.paused) return;
 
         const master = room.insiderGame.players?.find(p => p.role === 'Master');
         if (!master || master.id !== socket.id) return;
@@ -288,7 +350,7 @@ app.prepare().then(() => {
             io.to(roomCode).emit('new-message', systemMessage);
             
             roomTimers[roomCode] = setTimeout(() => advanceInsiderGameState(io, roomCode), room.insiderGame.timer * 1000);
-            io.to(roomCode).emit('room-state', room);
+            io.to(roomCode).emit('room-state', getSanitizedRoom(room));
         } else {
             const wrongGuessMessage = { id: Date.now().toString(), user: { id: 'system', nickname: 'System' }, text: `The guess "${guess}" was incorrect.`, timestamp: new Date().toISOString(), type: 'system' };
             io.to(master.id).emit('new-message', wrongGuessMessage);
@@ -318,13 +380,14 @@ app.prepare().then(() => {
                   players: assignedPlayers,
                   timer: 300,
                   votes: {},
+                  totalPausedTime: 0,
               };
               
               const systemMessage = { id: Date.now().toString(), user: { id: 'system', nickname: 'System' }, text: `The Insider game has started! You have 5 minutes to find the word.`, timestamp: new Date().toISOString(), type: 'system' };
               room.messages.push(systemMessage);
               io.to(roomCode).emit('new-message', systemMessage);
   
-              io.to(roomCode).emit('room-state', room);
+              io.to(roomCode).emit('room-state', getSanitizedRoom(room));
               
               room.insiderGame.players?.forEach((player) => {
                   let message = `Your role is: ${player.role}. `;
@@ -347,7 +410,7 @@ app.prepare().then(() => {
   
       socket.on('insider-submit-vote', ({ roomCode, voteForNickname }) => {
           const room = getRoom(roomCode);
-          if (!room?.insiderGame.isActive || room.insiderGame.phase !== 'voting' || room.activeGame !== 'insider') return;
+          if (!room?.insiderGame.isActive || room.insiderGame.phase !== 'voting' || room.activeGame !== 'insider' || room.insiderGame.paused) return;
           
           const voterId = socket.id;
           if(voterId && !room.insiderGame.votes?.[voterId]) {
@@ -358,7 +421,7 @@ app.prepare().then(() => {
               if (allVoted) {
                   advanceInsiderGameState(io, roomCode);
               } else {
-                io.to(roomCode).emit('room-state', room);
+                io.to(roomCode).emit('room-state', getSanitizedRoom(room));
               }
           }
       });
@@ -366,7 +429,7 @@ app.prepare().then(() => {
       // --- Coup Listeners ---
       socket.on('coup-action', ({ roomCode, action, targetId, extra }) => {
           const room = getRoom(roomCode);
-          if (!room || room.activeGame !== 'coup') return;
+          if (!room || room.activeGame !== 'coup' || room.coupGame.getState().paused) return;
 
           try {
             const game = room.coupGame;
@@ -378,7 +441,7 @@ app.prepare().then(() => {
                 case 'exchange-response': game.handleExchangeResponse(socket.id, extra.cards); break;
                 default: game.handleAction(socket.id, action, targetId);
             }
-            io.to(roomCode).emit('room-state', room);
+            io.to(roomCode).emit('room-state', getSanitizedRoom(room));
           } catch (error) {
               console.error(`Coup Error in room ${roomCode}:`, error);
               socket.emit('error', error.message);
@@ -425,7 +488,7 @@ app.prepare().then(() => {
                           room.messages.push(resetMessage);
                       }
                       
-                      io.to(roomCode).emit('room-state', room);
+                      io.to(roomCode).emit('room-state', getSanitizedRoom(room));
                   }
                   break;
               }
@@ -445,5 +508,3 @@ app.prepare().then(() => {
     console.log(`> Ready on http://localhost:${port}`);
   });
 });
-
-    
