@@ -27,7 +27,7 @@ export interface GameState {
   results?: {
     insider: string;
     wasInsiderFound: boolean;
-_wasWordGuessed: boolean;
+    wasWordGuessed: boolean;
   };
 }
 

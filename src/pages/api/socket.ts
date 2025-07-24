@@ -71,24 +71,29 @@ const socketHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
       let room = rooms[roomCode];
       
       if (!room) {
+        const owner = { id: socket.id, nickname };
         room = {
           id: roomCode,
-          owner: { id: socket.id, nickname },
-          users: [],
+          owner: owner,
+          users: [owner],
           messages: [],
           gameState: { isActive: false, phase: 'setup' },
         };
         rooms[roomCode] = room;
-      }
-      
-      if (room.users.find((user) => user.nickname === nickname)) {
-        return callback({ error: 'Nickname is already taken.' });
+      } else {
+        if (room.users.find((user) => user.nickname.toLowerCase() === nickname.toLowerCase())) {
+          return callback({ error: 'Nickname is already taken.' });
+        }
       }
 
       socket.join(roomCode);
-      const newUser = { id: socket.id, nickname };
-      room.users.push(newUser);
-
+      
+      const userExists = room.users.find(u => u.id === socket.id);
+      if(!userExists) {
+        const newUser = { id: socket.id, nickname };
+        room.users.push(newUser);
+      }
+      
       const systemMessage: Message = {
         id: Date.now().toString(),
         user: { id: 'system', nickname: 'System' },
@@ -96,7 +101,11 @@ const socketHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
         timestamp: new Date().toISOString(),
         type: 'system',
       };
-      room.messages.push(systemMessage);
+      
+      // Only push join message if it's not the owner creating the room
+      if(socket.id !== room.owner.id) {
+          room.messages.push(systemMessage);
+      }
 
       io.to(roomCode).emit('room-state', room);
       callback({ roomState: room });
