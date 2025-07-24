@@ -71,6 +71,7 @@ const socketHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
       let room = rooms[roomCode];
       
       if (!room) {
+        // Create a new room
         const owner = { id: socket.id, nickname };
         room = {
           id: roomCode,
@@ -81,31 +82,34 @@ const socketHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
         };
         rooms[roomCode] = room;
       } else {
-        if (room.users.find((user) => user.nickname.toLowerCase() === nickname.toLowerCase())) {
+        // Join an existing room
+        if (room.users.some(user => user.nickname.toLowerCase() === nickname.toLowerCase() && user.id !== socket.id)) {
           return callback({ error: 'Nickname is already taken.' });
+        }
+        
+        const userExists = room.users.find(u => u.id === socket.id);
+        if(!userExists) {
+            const newUser = { id: socket.id, nickname };
+            room.users.push(newUser);
+
+            const systemMessage: Message = {
+                id: Date.now().toString(),
+                user: { id: 'system', nickname: 'System' },
+                text: `${nickname} has joined the room.`,
+                timestamp: new Date().toISOString(),
+                type: 'system',
+            };
+            room.messages.push(systemMessage);
+        } else {
+            // Update nickname if user rejoining with a different one
+            const user = room.users.find(u => u.id === socket.id);
+            if(user && user.nickname !== nickname) {
+                user.nickname = nickname;
+            }
         }
       }
 
       socket.join(roomCode);
-      
-      const userExists = room.users.find(u => u.id === socket.id);
-      if(!userExists) {
-        const newUser = { id: socket.id, nickname };
-        room.users.push(newUser);
-      }
-      
-      const systemMessage: Message = {
-        id: Date.now().toString(),
-        user: { id: 'system', nickname: 'System' },
-        text: `${nickname} has joined the room.`,
-        timestamp: new Date().toISOString(),
-        type: 'system',
-      };
-      
-      // Only push join message if it's not the owner creating the room
-      if(socket.id !== room.owner.id) {
-          room.messages.push(systemMessage);
-      }
 
       io.to(roomCode).emit('room-state', room);
       callback({ roomState: room });
