@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Send, Check } from 'lucide-react';
-import type { GameState, Message, Player } from '../types';
+import type { GameState, Message, Player } from '../insider/types';
 
 interface ChatPanelProps {
   messages: Message[];
@@ -112,3 +112,4 @@ export default function ChatPanel({ messages, myId, myRole, gameState, onSendMes
     </>
   );
 }
+

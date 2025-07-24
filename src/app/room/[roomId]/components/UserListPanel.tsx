@@ -1,9 +1,14 @@
+
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Crown, Users, User as UserIcon } from 'lucide-react';
-import type { User } from '../types';
+
+interface User {
+  id: string;
+  nickname: string;
+}
 
 interface UserListPanelProps {
   roomCode: string;
@@ -15,7 +20,7 @@ interface UserListPanelProps {
 export default function UserListPanel({ roomCode, users, ownerId, myId }: UserListPanelProps) {
   return (
     <div>
-      <h2 className="text-xl font-bold mb-1">Chat Insider</h2>
+      <h2 className="text-xl font-bold mb-1">Chat & Games</h2>
       <p className="text-sm text-muted-foreground mb-4">Room Code: <span className="font-mono text-primary">{roomCode}</span></p>
 
       <Card>
@@ -40,3 +45,4 @@ export default function UserListPanel({ roomCode, users, ownerId, myId }: UserLi
     </div>
   );
 }
+

@@ -1,16 +1,20 @@
 
+
 const { createServer } = require('http');
 const { Server } = require('socket.io');
 const next = require('next');
+const CoupGame = require('./src/server/coup');
 
 const dev = process.env.NODE_ENV !== 'production';
 const app = next({ dev });
 const handle = app.getRequestHandler();
 
 const rooms = {};
-const roomTimers = {};
+const roomTimers = {}; // For Insider game
 
-const advanceGameState = (io, roomCode) => {
+// --- Insider Game Logic ---
+
+const advanceInsiderGameState = (io, roomCode) => {
     if (roomTimers[roomCode]) {
         clearTimeout(roomTimers[roomCode]);
         delete roomTimers[roomCode];
@@ -71,7 +75,7 @@ const advanceGameState = (io, roomCode) => {
     io.to(roomCode).emit('game-update', room.gameState);
 };
 
-const assignRoles = (playersList) => {
+const assignInsiderRoles = (playersList) => {
     if (playersList.length < 4) {
       throw new Error('The game requires at least 4 players.');
     }
@@ -95,6 +99,8 @@ const assignRoles = (playersList) => {
 };
 
 
+// --- Main Server Logic ---
+
 app.prepare().then(() => {
   const httpServer = createServer((req, res) => {
     handle(req, res);
@@ -108,70 +114,77 @@ app.prepare().then(() => {
   });
 
   io.on('connection', (socket) => {
-    socket.on('join-room', ({ roomCode, nickname }, callback) => {
+      socket.on('join-room', ({ roomCode, nickname, gameType }, callback) => {
         let room = rooms[roomCode];
-        
+
         if (!room) {
-          const owner = { id: socket.id, nickname };
-          room = {
-            id: roomCode,
-            owner,
-            users: [owner],
-            messages: [{
-              id: Date.now().toString(),
-              user: { id: 'system', nickname: 'System' },
-              text: `${nickname} created and joined the room.`,
-              timestamp: new Date().toISOString(),
-              type: 'system',
-            }],
-            gameState: { isActive: false, phase: 'setup' },
-          };
-          rooms[roomCode] = room;
-        } else {
-          const isNicknameTaken = room.users.some(u => u.nickname.toLowerCase() === nickname.toLowerCase() && u.id !== socket.id);
-          if (isNicknameTaken) {
-            return callback({ error: 'Nickname is already taken.' });
-          }
-          
-          const existingUser = room.users.find(u => u.id === socket.id);
-          if (existingUser) {
-            if (existingUser.nickname !== nickname) {
-              const oldNickname = existingUser.nickname;
-              existingUser.nickname = nickname;
-              if (room.owner.id === socket.id) {
-                room.owner.nickname = nickname;
-              }
-              const systemMessage = {
-                id: Date.now().toString(),
-                user: { id: 'system', nickname: 'System' },
-                text: `${oldNickname} is now known as ${nickname}.`,
-                timestamp: new Date().toISOString(),
-                type: 'system',
-              };
-              room.messages.push(systemMessage);
+            // Create room
+            if (!gameType) {
+                return callback({ error: 'A game type must be specified to create a room.' });
             }
-          } else {
+            const owner = { id: socket.id, nickname };
+            room = {
+                id: roomCode,
+                owner,
+                users: [owner],
+                gameType,
+                messages: [],
+            };
+            
+            if (gameType === 'insider') {
+                room.messages.push({
+                    id: Date.now().toString(),
+                    user: { id: 'system', nickname: 'System' },
+                    text: `${nickname} created and joined the room for Insider.`,
+                    timestamp: new Date().toISOString(),
+                    type: 'system',
+                });
+                room.gameState = { isActive: false, phase: 'setup' };
+            } else if (gameType === 'coup') {
+                room.coupGame = new CoupGame.CoupGame();
+                room.gameState = room.coupGame.getStateForPlayer();
+                 room.coupGame.addLog(`${nickname} created and joined the room for Coup.`);
+            }
+
+            rooms[roomCode] = room;
+        } else {
+            // Join existing room
+            const isNicknameTaken = room.users.some(u => u.nickname.toLowerCase() === nickname.toLowerCase());
+            if (isNicknameTaken) {
+                return callback({ error: 'Nickname is already taken.' });
+            }
+
             const newUser = { id: socket.id, nickname };
             room.users.push(newUser);
-            const systemMessage = {
-              id: Date.now().toString(),
-              user: { id: 'system', nickname: 'System' },
-              text: `${nickname} has joined the room.`,
-              timestamp: new Date().toISOString(),
-              type: 'system',
-            };
-            room.messages.push(systemMessage);
-          }
+            
+            if (room.gameType === 'insider') {
+                const systemMessage = {
+                    id: Date.now().toString(),
+                    user: { id: 'system', nickname: 'System' },
+                    text: `${nickname} has joined the room.`,
+                    timestamp: new Date().toISOString(),
+                    type: 'system',
+                };
+                room.messages.push(systemMessage);
+            } else if (room.gameType === 'coup') {
+                 room.coupGame.addLog(`${nickname} has joined the room.`);
+            }
         }
   
         socket.join(roomCode);
-        io.to(roomCode).emit('room-state', room);
-        callback({ roomState: room });
+        
+        // Add player to Coup game if it's in waiting phase
+        if (room.gameType === 'coup' && room.coupGame.getState().phase === 'waiting') {
+            room.coupGame.addPlayer(socket.id, nickname);
+        }
+
+        io.to(roomCode).emit('room-state', room.gameType === 'coup' ? room.coupGame.getRoomState(room) : room);
+        callback({ roomState: room.gameType === 'coup' ? room.coupGame.getRoomState(room) : room });
       });
       
       socket.on('send-message', ({ roomCode, message }) => {
           const room = rooms[roomCode];
-          if (!room) return;
+          if (!room || room.gameType !== 'insider') return;
   
           const user = room.users.find((u) => u.id === socket.id);
           if (!user) return;
@@ -187,9 +200,10 @@ app.prepare().then(() => {
           io.to(roomCode).emit('new-message', newMessage);
       });
       
-      socket.on('send-answer', ({ roomCode, questionId, answer }) => {
+      // --- Insider Listeners ---
+      socket.on('insider-send-answer', ({ roomCode, questionId, answer }) => {
         const room = rooms[roomCode];
-        if (!room || !room.gameState.isActive || room.gameState.phase !== 'questioning') return;
+        if (!room || room.gameType !== 'insider' || !room.gameState.isActive || room.gameState.phase !== 'questioning') return;
 
         const master = room.gameState.players?.find(p => p.role === 'Master');
         if (!master || master.id !== socket.id) return;
@@ -208,9 +222,9 @@ app.prepare().then(() => {
         io.to(roomCode).emit('new-message', answerMessage);
       });
 
-      socket.on('correct-guess', ({ roomCode, messageId }) => {
+      socket.on('insider-correct-guess', ({ roomCode, messageId }) => {
         const room = rooms[roomCode];
-        if (!room || !room.gameState.isActive || room.gameState.phase !== 'questioning') return;
+        if (!room || room.gameType !== 'insider' || !room.gameState.isActive || room.gameState.phase !== 'questioning') return;
 
         const master = room.gameState.players?.find(p => p.role === 'Master');
         if (!master || master.id !== socket.id) return;
@@ -233,7 +247,7 @@ app.prepare().then(() => {
             room.messages.push(systemMessage);
             io.to(roomCode).emit('new-message', systemMessage);
             
-            roomTimers[roomCode] = setTimeout(() => advanceGameState(io, roomCode), room.gameState.timer * 1000);
+            roomTimers[roomCode] = setTimeout(() => advanceInsiderGameState(io, roomCode), room.gameState.timer * 1000);
             io.to(roomCode).emit('game-update', room.gameState);
         } else {
             const wrongGuessMessage = { id: Date.now().toString(), user: { id: 'system', nickname: 'System' }, text: `The guess "${guess}" was incorrect.`, timestamp: new Date().toISOString(), type: 'system' };
@@ -241,14 +255,11 @@ app.prepare().then(() => {
         }
       });
   
-      socket.on('start-game', ({ roomCode, targetWord }) => {
+      socket.on('insider-start-game', ({ roomCode, targetWord }) => {
           const room = rooms[roomCode];
-          if (!room || room.owner.id !== socket.id) {
-               socket.emit('error', "Only the room owner can start the game.");
-               return;
-          }
-          if (room.users.length < 4) {
-              socket.emit('error', "You need at least 4 players to start the game.");
+          if (!room || room.owner.id !== socket.id || room.gameType !== 'insider') return;
+          if (room.users.length < 2) { // Min players for Insider
+              socket.emit('error', "You need at least 4 players to start Insider.");
               return;
           }
           if (room.gameState.isActive) {
@@ -257,9 +268,10 @@ app.prepare().then(() => {
           }
   
           try {
-              const assignedPlayers = assignRoles(room.users);
+              const assignedPlayers = assignInsiderRoles(room.users);
               
               room.gameState = {
+                  ...room.gameState,
                   isActive: true,
                   phase: 'questioning',
                   targetWord,
@@ -284,9 +296,8 @@ app.prepare().then(() => {
                   io.to(player.id).emit('private-role', { role: player.role, message });
               });
   
-  
               if (roomTimers[roomCode]) clearTimeout(roomTimers[roomCode]);
-              roomTimers[roomCode] = setTimeout(() => advanceGameState(io, roomCode), room.gameState.timer * 1000);
+              roomTimers[roomCode] = setTimeout(() => advanceInsiderGameState(io, roomCode), room.gameState.timer * 1000);
   
           } catch (error) {
               console.error('Error starting game:', error);
@@ -294,9 +305,9 @@ app.prepare().then(() => {
           }
       });
   
-      socket.on('submit-vote', ({ roomCode, voteForNickname }) => {
+      socket.on('insider-submit-vote', ({ roomCode, voteForNickname }) => {
           const room = rooms[roomCode];
-          if (!room?.gameState.isActive || room.gameState.phase !== 'voting') return;
+          if (!room?.gameState.isActive || room.gameState.phase !== 'voting' || room.gameType !== 'insider') return;
           
           const voterId = socket.id;
           if(voterId && !room.gameState.votes?.[voterId]) {
@@ -305,13 +316,34 @@ app.prepare().then(() => {
               const allVoted = room.gameState.players && Object.keys(room.gameState.votes).length === room.gameState.players.length;
   
               if (allVoted) {
-                  advanceGameState(io, roomCode);
+                  advanceInsiderGameState(io, roomCode);
               } else {
                 io.to(roomCode).emit('game-update', room.gameState);
               }
           }
       });
+
+      // --- Coup Listeners ---
+      socket.on('coup-action', ({ roomCode, action, targetId }) => {
+          const room = rooms[roomCode];
+          if (!room || room.gameType !== 'coup') return;
+
+          try {
+            if (action === 'start_game') {
+                if (socket.id === room.owner.id) {
+                    room.coupGame.startGame();
+                }
+            } else {
+                room.coupGame.handleAction(socket.id, action, targetId);
+            }
+            io.to(roomCode).emit('room-state', room.coupGame.getRoomState(room));
+          } catch (error) {
+              console.error(`Coup Error in room ${roomCode}:`, error);
+              socket.emit('error', error.message);
+          }
+      });
   
+      // --- Generic Listeners ---
       const handleDisconnect = () => {
           for (const roomCode in rooms) {
               const room = rooms[roomCode];
@@ -321,11 +353,16 @@ app.prepare().then(() => {
                   const user = room.users[userIndex];
                   room.users.splice(userIndex, 1);
                   
-                  const systemMessage = { id: Date.now().toString(), user: { id: 'system', nickname: 'System' }, text: `${user.nickname} has left the room.`, timestamp: new Date().toISOString(), type: 'system' };
-                  room.messages.push(systemMessage);
-  
+                  if (room.gameType === 'insider') {
+                    const systemMessage = { id: Date.now().toString(), user: { id: 'system', nickname: 'System' }, text: `${user.nickname} has left the room.`, timestamp: new Date().toISOString(), type: 'system' };
+                    room.messages.push(systemMessage);
+                  } else if (room.gameType === 'coup') {
+                      room.coupGame.removePlayer(user.id);
+                      room.coupGame.addLog(`${user.nickname} has left the room.`);
+                  }
+
                   if (room.users.length === 0) {
-                      if (roomTimers[roomCode]) {
+                      if (room.gameType === 'insider' && roomTimers[roomCode]) {
                           clearTimeout(roomTimers[roomCode]);
                           delete roomTimers[roomCode];
                       }
@@ -333,11 +370,15 @@ app.prepare().then(() => {
                   } else {
                       if (room.owner.id === user.id) {
                           room.owner = room.users[0];
-                          const ownerMessage = { id: Date.now().toString(), user: { id: 'system', nickname: 'System' }, text: `${room.owner.nickname} is the new room owner.`, timestamp: new Date().toISOString(), type: 'system' };
-                          room.messages.push(ownerMessage);
+                          if (room.gameType === 'insider') {
+                            const ownerMessage = { id: Date.now().toString(), user: { id: 'system', nickname: 'System' }, text: `${room.owner.nickname} is the new room owner.`, timestamp: new Date().toISOString(), type: 'system' };
+                            room.messages.push(ownerMessage);
+                          } else if (room.gameType === 'coup') {
+                            room.coupGame.addLog(`${room.owner.nickname} is the new room owner.`);
+                          }
                       }
   
-                      if (room.gameState.isActive && (room.users.length < 4 || (room.gameState.players && !room.gameState.players.some(p => p.id === user.id)))) {
+                      if (room.gameType === 'insider' && room.gameState.isActive && (room.users.length < 4 || (room.gameState.players && !room.gameState.players.some(p => p.id === user.id)))) {
                            if (roomTimers[roomCode]) {
                               clearTimeout(roomTimers[roomCode]);
                               delete roomTimers[roomCode];
@@ -346,7 +387,8 @@ app.prepare().then(() => {
                           const resetMessage = { id: Date.now().toString(), user: { id: 'system', nickname: 'System' }, text: 'Game reset due to a player leaving or not enough players.', timestamp: new Date().toISOString(), type: 'system' };
                           room.messages.push(resetMessage);
                       }
-                      io.to(roomCode).emit('room-state', room);
+                      
+                      io.to(roomCode).emit('room-state', room.gameType === 'coup' ? room.coupGame.getRoomState(room) : room);
                   }
                   break;
               }

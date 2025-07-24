@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Gamepad2, Eye } from 'lucide-react';
-import type { GameState, User, Player } from '../types';
+import type { GameState, User, Player } from '../insider/types';
 
 interface GamePanelProps {
   gameState: GameState;
@@ -105,3 +105,4 @@ export default function GamePanel({ gameState, isOwner, users, myId, myRole, onS
     </Card>
   );
 }
+
