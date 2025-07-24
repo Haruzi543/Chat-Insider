@@ -69,26 +69,15 @@ const socketHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
   io.on('connection', (socket: Socket) => {
     socket.on('join-room', ({ roomCode, nickname }, callback) => {
       let room = rooms[roomCode];
-      
-      if (!room) {
-        // Create a new room
-        const owner = { id: socket.id, nickname };
-        room = {
-          id: roomCode,
-          owner: owner,
-          users: [owner],
-          messages: [],
-          gameState: { isActive: false, phase: 'setup' },
-        };
-        rooms[roomCode] = room;
-      } else {
-        // Join an existing room
+
+      if (room) {
+        // Room exists, user is joining
         if (room.users.some(user => user.nickname.toLowerCase() === nickname.toLowerCase() && user.id !== socket.id)) {
           return callback({ error: 'Nickname is already taken.' });
         }
-        
-        const userExists = room.users.find(u => u.id === socket.id);
-        if(!userExists) {
+
+        const userInRoom = room.users.find(u => u.id === socket.id);
+        if (!userInRoom) {
             const newUser = { id: socket.id, nickname };
             room.users.push(newUser);
 
@@ -101,18 +90,28 @@ const socketHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
             };
             room.messages.push(systemMessage);
         } else {
-            // Update nickname if user rejoining with a different one
-            const user = room.users.find(u => u.id === socket.id);
-            if(user && user.nickname !== nickname) {
-                user.nickname = nickname;
+            // User is rejoining, update nickname if changed
+            if (userInRoom.nickname !== nickname) {
+                userInRoom.nickname = nickname;
             }
         }
+      } else {
+        // Room does not exist, user is creating
+        const owner = { id: socket.id, nickname };
+        room = {
+          id: roomCode,
+          owner: owner,
+          users: [owner],
+          messages: [],
+          gameState: { isActive: false, phase: 'setup' },
+        };
+        rooms[roomCode] = room;
       }
 
       socket.join(roomCode);
 
-      io.to(roomCode).emit('room-state', room);
-      callback({ roomState: room });
+      io.to(roomCode).emit('room-state', rooms[roomCode]);
+      callback({ roomState: rooms[roomCode] });
     });
     
     socket.on('send-message', ({ roomCode, message }) => {
